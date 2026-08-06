@@ -6,7 +6,7 @@
 #   or:    connect this repo in Cloudflare > Workers & Pages > Create > Import
 #          a repository  (Workers Builds auto-deploys on every push to main).
 
-name = "berlinhousewares"
+name = "custom-print"
 main = "dist/server/index.js"
 compatibility_date = "2025-05-01"
 compatibility_flags = ["nodejs_compat"]
