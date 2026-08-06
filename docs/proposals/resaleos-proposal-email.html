@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="x-apple-disable-message-reformatting">
+<title>Proposal: Public Seller Storefronts for ResaleOS Merchants</title>
+<style>
+  /* Client-safe: most email clients honor a small subset of <style>; every
+     critical style is ALSO inlined below so it survives if this is stripped. */
+  body { margin:0; padding:0; background:#eef1ef; }
+  a { color:#1f7a4d; }
+  @media (max-width:620px){
+    .container { width:100% !important; }
+    .px { padding-left:22px !important; padding-right:22px !important; }
+    .stack { display:block !important; width:100% !important; }
+  }
+  @media (prefers-color-scheme: dark){
+    /* Email dark-mode support is uneven; we keep a light card either way for
+       predictability rather than half-inverting. */
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#eef1ef;">
+<!-- preheader (hidden preview text) -->
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;font-size:1px;line-height:1px;color:#eef1ef;">
+  A small, additive API change that lets any ResaleOS merchant give each consignor their own storefront. We've built the proof.
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1ef;">
+<tr><td align="center" style="padding:28px 12px;">
+
+<table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(16,32,24,.08);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+  <!-- Header band -->
+  <tr>
+    <td style="background:#12261c;padding:30px 34px;">
+      <div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#7fd6a0;font-weight:700;">API Proposal</div>
+      <div style="font-size:23px;line-height:1.25;color:#ffffff;font-weight:800;margin-top:8px;">
+        Let ResaleOS merchants give every consignor<br>their own storefront
+      </div>
+      <div style="font-size:14px;color:#b9c9c0;margin-top:12px;line-height:1.5;">
+        A small, additive change to the API &mdash; and a working example we've already shipped.
+      </div>
+    </td>
+  </tr>
+
+  <!-- Meta row -->
+  <tr>
+    <td class="px" style="padding:18px 34px;border-bottom:1px solid #e7ebe8;background:#f7f9f7;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="font-size:13px;color:#55605a;line-height:1.6;">
+            <strong style="color:#12261c;">To:</strong> ResaleOS &mdash; Product / API team<br>
+            <strong style="color:#12261c;">From:</strong> <em>[your name]</em>, Berlin Houseware &middot; <em>[email]</em>
+          </td>
+          <td align="right" style="font-size:13px;color:#55605a;line-height:1.6;vertical-align:top;">
+            <em>[date]</em>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Body -->
+  <tr>
+    <td class="px" style="padding:30px 34px 8px;">
+
+      <!-- The idea, in one breath -->
+      <p style="font-size:16px;line-height:1.65;color:#25322c;margin:0 0 18px;">
+        Hi team &mdash; we run <strong>Berlin Houseware</strong>, a Shopify storefront
+        built on ResaleOS. We've launched <strong>public "seller storefronts"</strong>:
+        a page for each consignor showing their items, name, and logo
+        (think a mini shop-within-the-shop). Shoppers love a face behind the goods,
+        and it gives consignors a page they'll happily share.
+      </p>
+      <p style="font-size:16px;line-height:1.65;color:#25322c;margin:0 0 22px;">
+        Building it, we hit the same small set of gaps <em>any</em> ResaleOS merchant
+        would hit. Closing them is mostly <strong>adding one field and one endpoint</strong>,
+        and it would turn "public consignor storefronts" into something every merchant
+        on ResaleOS gets more or less for free.
+      </p>
+
+      <!-- The problem in plain words -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f8f5;border:1px solid #dcebe1;border-radius:12px;margin:0 0 26px;">
+        <tr><td style="padding:20px 22px;">
+          <div style="font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#1f7a4d;font-weight:700;margin-bottom:10px;">The gap, in plain English</div>
+          <p style="font-size:15px;line-height:1.6;color:#33423b;margin:0 0 12px;">
+            ResaleOS already knows <em>who</em> each product's consignor is. But the API
+            doesn't hand that back in a way a storefront can use, so today a merchant
+            can't reliably answer two simple questions:
+          </p>
+          <p style="font-size:15px;line-height:1.6;color:#33423b;margin:0 0 6px;">
+            &bull;&nbsp; <strong>"What is this seller's name?"</strong> &mdash; the product
+            record has the seller's ID but the name comes back empty; the name only
+            appears elsewhere, without the ID to match it to.
+          </p>
+          <p style="font-size:15px;line-height:1.6;color:#33423b;margin:0;">
+            &bull;&nbsp; <strong>"Show me this seller and their items."</strong> &mdash;
+            there's no seller endpoint to ask.
+          </p>
+        </td></tr>
+      </table>
+
+      <p style="font-size:15px;line-height:1.6;color:#55605a;margin:0 0 8px;">
+        To ship anyway, every integrator ends up building the same workarounds
+        (stitching the name together from other calls, and hand-keeping seller
+        profiles in Shopify). They work &mdash; but they're fragile, and they're the
+        same tax on every merchant.
+      </p>
+
+    </td>
+  </tr>
+
+  <!-- The asks -->
+  <tr>
+    <td class="px" style="padding:14px 34px 6px;">
+      <div style="font-size:17px;font-weight:800;color:#12261c;margin:0 0 4px;">What we're suggesting</div>
+      <div style="font-size:14px;color:#55605a;margin:0 0 20px;">Additive, read-only, no breaking changes. Ordered by value-for-effort.</div>
+
+      <!-- Ask card P0 #1 -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;border:1px solid #e7ebe8;border-radius:12px;">
+        <tr><td style="padding:18px 20px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="font-size:15px;font-weight:700;color:#12261c;">1. Put the consignor's name (with their ID) on the product</td>
+            <td align="right" width="52" style="vertical-align:top;"><span style="display:inline-block;font-size:11px;font-weight:700;color:#ffffff;background:#1f7a4d;border-radius:20px;padding:3px 10px;">P0</span></td>
+          </tr></table>
+          <p style="font-size:14px;line-height:1.6;color:#4a564f;margin:10px 0 0;">
+            Include both <code style="background:#eef2ef;padding:1px 5px;border-radius:4px;">accountId</code>
+            and <code style="background:#eef2ef;padding:1px 5px;border-radius:4px;">name</code> in the
+            <code style="background:#eef2ef;padding:1px 5px;border-radius:4px;">consignor</code> object on the
+            product API and product webhook. <strong>This one field removes the biggest
+            workaround by itself</strong> &mdash; no more stitching names together from sales data.
+          </p>
+        </td></tr>
+      </table>
+
+      <!-- Ask card P0 #2 -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;border:1px solid #e7ebe8;border-radius:12px;">
+        <tr><td style="padding:18px 20px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="font-size:15px;font-weight:700;color:#12261c;">2. Add a consignor endpoint</td>
+            <td align="right" width="52" style="vertical-align:top;"><span style="display:inline-block;font-size:11px;font-weight:700;color:#ffffff;background:#1f7a4d;border-radius:20px;padding:3px 10px;">P0</span></td>
+          </tr></table>
+          <p style="font-size:14px;line-height:1.6;color:#4a564f;margin:10px 0 0;">
+            <code style="background:#eef2ef;padding:1px 5px;border-radius:4px;">GET /consignors/{accountId}</code>
+            (returns 404 today) giving the seller's public identity &mdash; at minimum
+            name + a stable slug, ideally logo, bio, and a verified flag. Lets the
+            seller's profile live in ResaleOS instead of being hand-entered per store.
+          </p>
+        </td></tr>
+      </table>
+
+      <!-- Ask card P1 group -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 14px;border:1px solid #e7ebe8;border-radius:12px;">
+        <tr><td style="padding:18px 20px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="font-size:15px;font-weight:700;color:#12261c;">3. Three follow-ons</td>
+            <td align="right" width="52" style="vertical-align:top;"><span style="display:inline-block;font-size:11px;font-weight:700;color:#ffffff;background:#b7791f;border-radius:20px;padding:3px 10px;">P1</span></td>
+          </tr></table>
+          <p style="font-size:14px;line-height:1.6;color:#4a564f;margin:10px 0 4px;">
+            &bull;&nbsp; A <strong>consignor.updated</strong> webhook (you already send product webhooks) &mdash; so seller renames appear in real time instead of on a schedule.<br>
+            &bull;&nbsp; <strong>Filter sales by consignor</strong> &mdash; for per-seller stats and payout reconciliation.<br>
+            &bull;&nbsp; <strong>List a consignor's products</strong> &mdash; so a store can be built straight from ResaleOS.
+          </p>
+        </td></tr>
+      </table>
+
+      <!-- Priority strip -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 4px;">
+        <tr>
+          <td class="stack" style="padding:6px;" width="50%">
+            <div style="background:#f4f8f5;border:1px solid #dcebe1;border-radius:10px;padding:14px 16px;">
+              <div style="font-size:11px;font-weight:700;color:#1f7a4d;letter-spacing:.06em;">P0 &mdash; DO FIRST</div>
+              <div style="font-size:13px;color:#33423b;line-height:1.5;margin-top:5px;">Name-on-product + consignor endpoint. Removes the two big workarounds.</div>
+            </div>
+          </td>
+          <td class="stack" style="padding:6px;" width="50%">
+            <div style="background:#fbf6ec;border:1px solid #efe1c6;border-radius:10px;padding:14px 16px;">
+              <div style="font-size:11px;font-weight:700;color:#b7791f;letter-spacing:.06em;">P1 &mdash; NEXT</div>
+              <div style="font-size:13px;color:#4a4335;line-height:1.5;margin-top:5px;">Consignor webhook, sales-by-consignor, consignor's products.</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+
+  <!-- Why it's worth it -->
+  <tr>
+    <td class="px" style="padding:22px 34px 6px;">
+      <div style="font-size:17px;font-weight:800;color:#12261c;margin:0 0 12px;">Why it's worth it for ResaleOS</div>
+      <p style="font-size:15px;line-height:1.65;color:#33423b;margin:0 0 10px;">
+        &bull;&nbsp; <strong>A feature every merchant gets.</strong> Public consignor
+        storefronts become an out-of-the-box selling point, not a custom build.
+      </p>
+      <p style="font-size:15px;line-height:1.65;color:#33423b;margin:0 0 10px;">
+        &bull;&nbsp; <strong>More GMV on ResaleOS-backed stores.</strong> Give consignors
+        a page and they promote it &mdash; that traffic flows back to your merchants.
+      </p>
+      <p style="font-size:15px;line-height:1.65;color:#33423b;margin:0 0 10px;">
+        &bull;&nbsp; <strong>Tiny surface area.</strong> #1 is a field on data you already
+        send; the rest are read endpoints over data you already hold. No breaking changes.
+      </p>
+    </td>
+  </tr>
+
+  <!-- CTA -->
+  <tr>
+    <td class="px" style="padding:22px 34px 30px;">
+      <table role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td style="border-radius:26px;background:#1f7a4d;">
+          <a href="mailto:" style="display:inline-block;padding:13px 26px;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:26px;">Grab 30 minutes with us &rarr;</a>
+        </td></tr>
+      </table>
+      <p style="font-size:14px;line-height:1.6;color:#55605a;margin:16px 0 0;">
+        We'll confirm what already exists (we may have missed something), share exactly
+        how a storefront consumes each field, and happily be your first tester.
+        We're asking for <strong>no write access</strong> &mdash; everything here is read or subscribe only.
+      </p>
+      <p style="font-size:14px;line-height:1.6;color:#33423b;margin:14px 0 0;">
+        Thanks,<br><strong>[your name]</strong><br><span style="color:#55605a;">Berlin Houseware &middot; [email]</span>
+      </p>
+    </td>
+  </tr>
+
+  <!-- Technical appendix -->
+  <tr>
+    <td class="px" style="padding:20px 34px 30px;background:#f7f9f7;border-top:1px solid #e7ebe8;">
+      <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8a938d;font-weight:700;margin-bottom:10px;">For your engineers &mdash; example shapes</div>
+      <div style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.6;color:#33423b;background:#ffffff;border:1px solid #e7ebe8;border-radius:10px;padding:14px 16px;white-space:pre;overflow-x:auto;">// 1. product payload / product webhook &mdash; add name here
+"consignor": { "accountId": "A-215038", "name": "Mike's Closet" }
+
+// 2. GET /consignors/{accountId}   (404 today)
+{ "consignor": {
+    "accountId": "A-215038", "slug": "mikes-closet",
+    "name": "Mike's Closet", "logoUrl": "...",
+    "bio": "...", "verified": true, "status": "active" } }
+
+// 3. new event: consignor.updated  (signed, like product.*)
+//    GET /sales?consignorAccountId=A-215038
+//    GET /consignors/{accountId}/products?cursor=...</div>
+      <p style="font-size:12px;line-height:1.6;color:#8a938d;margin:12px 0 0;">
+        Context: we currently use signed <code>product.*</code> webhooks +
+        <code>GET /products</code> + <code>GET /sales</code>, joining on
+        <code>sku = resaleosId</code>.
+      </p>
+    </td>
+  </tr>
+
+</table>
+
+<div style="font-size:11px;color:#9aa39d;margin-top:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  Draft &mdash; fill the [your name] / [email] / [date] fields before sending.
+</div>
+
+</td></tr>
+</table>
+</body>
+</html>

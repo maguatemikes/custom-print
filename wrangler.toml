@@ -1,0 +1,41 @@
+# Cloudflare Workers config for the Berlin Houseware Hydrogen app.
+# `npm run build` (shopify hydrogen build) emits a Workers module at
+# dist/server/index.js plus browser assets in dist/client.
+#
+# Deploy:  npm run deploy            (local CLI)
+#   or:    connect this repo in Cloudflare > Workers & Pages > Create > Import
+#          a repository  (Workers Builds auto-deploys on every push to main).
+
+name = "berlinhousewares"
+main = "dist/server/index.js"
+compatibility_date = "2025-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare serves these files directly; any request that doesn't match a
+# static file falls through to the Worker for server-side rendering.
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+
+# Public (browser-exposed) env vars — safe to commit. `wrangler deploy` (run by
+# Workers Builds) applies ONLY what's here and wipes dashboard-set plain vars,
+# so they must live in this file to survive each deploy.
+[vars]
+PUBLIC_STORE_DOMAIN = "custombandanas-shop-2.myshopify.com"
+PUBLIC_CHECKOUT_DOMAIN = "custombandanas.shop"
+PUBLIC_STOREFRONT_API_TOKEN = "459cd84ff1a11d319724e49cb7527627"
+PUBLIC_STOREFRONT_ID = "87878049-e888-4dd9-b7f6-5186999f02f7"
+# Hydrogen builds the customer-account OAuth URL from SHOP_ID.
+SHOP_ID = "100294852906"
+
+# Customer Account API — NOT YET SET for custombandanas. Create the app +
+# register callback/JS-origin URLs, then uncomment. Sign In stays disabled until then.
+# PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID = ""
+# PUBLIC_CUSTOMER_ACCOUNT_API_URL = ""
+
+# NOTE: PRIVATE_STOREFRONT_API_TOKEN is a secret — set it via
+# `npx wrangler secret put PRIVATE_STOREFRONT_API_TOKEN` (not here).
+
+# SESSION_SECRET is a real secret — do NOT put it here. Set it as an encrypted
+# Secret in the dashboard, or `npx wrangler secret put SESSION_SECRET`.
+# Secrets DO persist across `wrangler deploy` (unlike plain dashboard vars).

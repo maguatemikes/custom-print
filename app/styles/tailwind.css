@@ -1,0 +1,171 @@
+/**
+ * Tailwind v4 — light-green, Nike-inspired design system.
+ * Tokens live in @theme (auto-generate utilities like bg-brand-500, text-ink).
+ * Reusable primitives live in @layer components.
+ */
+/* Self-hosted Inter — clean neo-grotesque UI typeface. */
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/inter/latin-800.css';
+@import 'tailwindcss';
+
+@theme {
+  /* Typography — Inter */
+  --font-sans:
+    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Helvetica, Arial, sans-serif;
+  --font-display:
+    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Helvetica, Arial, sans-serif;
+
+  /* Ink & paper */
+  --color-ink: #101410;
+  --color-paper: #ffffff;
+  --color-muted: #6b7280;
+
+  /* Brand scale — red */
+  --color-brand-50: #fef2f2;
+  --color-brand-100: #fde4e4;
+  --color-brand-200: #fbcdcd;
+  --color-brand-300: #f5a3a3;
+  --color-brand-400: #ee6a6a;
+  --color-brand-500: #e23b3b;
+  --color-brand-600: #c62a2a;
+  --color-brand-700: #a81f1f;
+  --color-brand-800: #8a1a1a;
+  --color-brand-900: #6b1515;
+
+  /* Ultra-light neutral gray surfaces (token name kept as `mint` for
+     compatibility) — section bands, tiles, hover fills, badges. */
+  --color-mint: #f6f6f7;
+  --color-mint-deep: #ececee;
+
+  /* Rounding — softened corners site-wide (cards/tiles/inputs); buttons,
+     swatches and the search pill stay fully round via --radius-pill. */
+  --radius-xl: 0.5rem; /* 12px → 8px  (small thumbs) */
+  --radius-2xl: 0.75rem; /* 16px → 12px (product cards, inputs) */
+  --radius-3xl: 1rem; /* 24px → 16px (large tiles, gallery, hero) */
+  --radius-pill: 9999px;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* NOTE: no global `scroll-behavior: smooth` — it makes React Router's
+       <ScrollRestoration> animate the scroll-to-top on navigation, which never
+       lands, leaving new pages (e.g. a PDP) stuck mid-page. Smooth scrolling is
+       opted into explicitly where wanted via scrollIntoView({behavior:'smooth'}). */
+  }
+
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+
+  ::selection {
+    background: var(--color-brand-300);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  /* Horizontal page gutter shared across sections */
+  .ui-container {
+    width: 100%;
+    max-width: 90rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+  @media (min-width: 768px) {
+    .ui-container {
+      padding-inline: 2.5rem;
+    }
+  }
+
+  /* Pill buttons — Nike signature */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-pill);
+    padding: 0.75rem 1.5rem;
+    /* transparent border on every variant so outline/solid share one height */
+    border: 1.5px solid transparent;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    transition:
+      background-color 0.18s ease,
+      color 0.18s ease,
+      transform 0.18s ease,
+      border-color 0.18s ease;
+    cursor: pointer;
+  }
+  .btn:active {
+    transform: scale(0.97);
+  }
+
+  .btn-dark {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+  .btn-dark:hover {
+    background: var(--color-brand-600);
+  }
+
+  /* Green surfaces carry WHITE text — brand-700 keeps it AA (6.26:1).
+     Hover goes darker so the label stays readable. */
+  .btn-brand {
+    background: var(--color-brand-700);
+    color: var(--color-paper);
+  }
+  .btn-brand:hover {
+    background: var(--color-brand-800);
+  }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--color-ink);
+    border-color: var(--color-ink);
+  }
+  .btn-outline:hover {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--color-ink);
+    border: 1.5px solid transparent;
+  }
+  .btn-ghost:hover {
+    background: #ffffff;
+  }
+
+  /* Small uppercase eyebrow label */
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    font-size: 0.75rem;
+  }
+}
+
+@layer utilities {
+  /* Scrollable, but with the scrollbar visually hidden */
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE / old Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome / Safari / WebKit */
+  }
+}
+
+/* (Headline word rotation now uses a JS letter-scramble effect in _index.tsx) */

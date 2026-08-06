@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "deny": [
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__google_ads__runRawMutate",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__google_ads__runRawMutateDelete",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__google_ads__runRawCustomAudienceMutate",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__google_ads__applyRecommendation",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__google_ads__dismissRecommendation",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__google_ads__uploadImageAsset",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__meta_ads__runGraphWrite",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__meta_ads__runGraphDelete",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__meta_ads__uploadImageFromUrl",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__tiktok_ads__write",
+      "mcp__80e7adb5-ca66-4e91-bc54-067dff9d7ae6__tiktok_ads__delete"
+    ]
+  }
+}
