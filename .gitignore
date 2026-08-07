@@ -12,3 +12,6 @@ tsconfig.tsbuildinfo
 # Claude Code — local settings + session snapshots contain tokens; never commit
 .claude/settings.local.json
 .claude/sessions/
+
+# Nested Shopify app (discount function) — its own repo, don't track here
+/custom-print-discount

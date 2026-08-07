@@ -29,20 +29,35 @@ const SIZES: Array<{name: string; list: number}> = [
   {name: '35 x 35', list: 40},
 ];
 
-// Volume price breaks (multiplier off the list price). Highest min first.
-// TODO: replace with real pricing; wire to a Shopify quantity-break discount so
-// the cart total matches this quote exactly.
-const VOLUME: Array<{min: number; mult: number}> = [
-  {min: 100, mult: 0.3},
-  {min: 48, mult: 0.35},
-  {min: 24, mult: 0.4},
-  {min: 12, mult: 0.56},
-];
-
 const MIN_QTY = 12;
 
-// List price used for a bespoke custom size (premium over the largest preset).
-const CUSTOM_LIST = 44;
+// The undiscounted single-unit price (qty 1–11) — the "you save vs" anchor.
+const BASE_PRICE = 25.0;
+
+// "Buy more, save more" tiers — mirrors the Shopify tiered-discount function.
+// `label` is the band shown in the table; `each` is the per-piece price.
+type Tier = {
+  min: number;
+  max: number | null;
+  label: string;
+  discount: string;
+  each: number;
+};
+const TIERS: Tier[] = [
+  {min: 1, max: 11, label: '11', discount: '—', each: 25.0},
+  {min: 12, max: 23, label: '12 – 23', discount: '23.08%', each: 19.23},
+  {min: 24, max: 35, label: '24 – 35', discount: '42.4%', each: 14.4},
+  {min: 36, max: 47, label: '36 – 47', discount: '48.72%', each: 12.82},
+  {min: 48, max: 59, label: '48 – 59', discount: '55.92%', each: 11.02},
+  {min: 60, max: 71, label: '60 – 71', discount: '61.52%', each: 9.62},
+  {min: 72, max: 83, label: '72 – 83', discount: '63.16%', each: 9.21},
+  {min: 84, max: 143, label: '84 – 143', discount: '62.88%', each: 9.28},
+  {min: 144, max: 299, label: '144 – 299', discount: '74.68%', each: 6.33},
+  {min: 300, max: 599, label: '300 – 599', discount: '78.32%', each: 5.42},
+  {min: 600, max: 1199, label: '600 – 1,199', discount: '84.96%', each: 3.76},
+  {min: 1200, max: 3599, label: '1,200 – 3,599', discount: '86.36%', each: 3.41},
+  {min: 3600, max: null, label: '3,600+', discount: '88.6%', each: 2.85},
+];
 
 const INTENTS: Array<{value: string; label: string}> = [
   {value: 'ready', label: 'Yes — my design is ready to go'},
@@ -226,16 +241,20 @@ export async function loader({context}: Route.LoaderArgs) {
 /* Pricing helpers                                                            */
 /* -------------------------------------------------------------------------- */
 
-function tierFor(qty: number) {
-  return VOLUME.find((t) => qty >= t.min) ?? VOLUME[VOLUME.length - 1];
+/** The tier whose band contains this quantity. */
+function tierFor(qty: number): Tier {
+  return (
+    TIERS.find((t) => qty >= t.min && (t.max === null || qty <= t.max)) ??
+    TIERS[TIERS.length - 1]
+  );
 }
-function unitPrice(list: number, qty: number) {
-  return list * tierFor(qty).mult;
+/** Per-piece price for a quantity, from the tier table. */
+function unitPriceFor(qty: number): number {
+  return tierFor(qty).each;
 }
+/** Next quantity band above the current qty (for the "order X+ to drop" hint). */
 function nextTier(qty: number) {
-  return [...VOLUME]
-    .sort((a, b) => a.min - b.min)
-    .find((t) => t.min > qty);
+  return TIERS.find((t) => t.min > qty);
 }
 function money(n: number, cc: string) {
   return new Intl.NumberFormat('en-US', {
@@ -460,11 +479,12 @@ export default function CustomDesign() {
     [variants, sizeOption, material],
   );
   const variantId = selectedVariant?.id ?? null;
-  const unit = selectedVariant?.amount ?? 0;
+  // "Buy more, save more" tiered pricing (mirrors the Shopify discount function).
+  const unit = unitPriceFor(qty);
   const total = unit * qty;
-  const saved = 0; // volume discounts handled natively at checkout
-  const nt = undefined; // (kept for QuoteStep prop shape)
-  const list = unit;
+  const list = BASE_PRICE;
+  const saved = (BASE_PRICE - unit) * qty;
+  const nt = nextTier(qty);
   const intentLabel = INTENTS.find((i) => i.value === intent)?.label ?? '';
   const patternLabel = PATTERNS.find((p) => p.value === pattern)?.label ?? '';
   const baseColor = keepWhite ? '#ffffff' : baseHex;
@@ -607,6 +627,7 @@ export default function CustomDesign() {
                 <QuantityStep
                   qty={qty}
                   setQty={setQty}
+                  currencyCode={currencyCode}
                   email={email}
                   setEmail={setEmail}
                   deliveryAck={deliveryAck}
@@ -1116,9 +1137,107 @@ function BandanaStep({
   );
 }
 
+/**
+ * "Buy more, save more" tier table — row labels (Qty / Discount / Price-each)
+ * + horizontally drag-scrollable tier columns. The band containing the current
+ * quantity is highlighted; tapping a band sets the quantity to its start.
+ */
+function TierTable({
+  qty,
+  setQty,
+  currencyCode,
+}: {
+  qty: number;
+  setQty: (v: number) => void;
+  currencyCode: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const drag = useRef({down: false, moved: false, startX: 0, scrollLeft: 0});
+  const active = tierFor(qty);
+
+  const onDown = (e: React.PointerEvent) => {
+    const el = ref.current;
+    if (!el) return;
+    drag.current = {
+      down: true,
+      moved: false,
+      startX: e.clientX,
+      scrollLeft: el.scrollLeft,
+    };
+  };
+  const onMove = (e: React.PointerEvent) => {
+    const el = ref.current;
+    const d = drag.current;
+    if (!d.down || !el) return;
+    const dx = e.clientX - d.startX;
+    if (Math.abs(dx) > 4) d.moved = true;
+    el.scrollLeft = d.scrollLeft - dx;
+  };
+  const end = () => {
+    drag.current.down = false;
+  };
+
+  return (
+    <div className="max-w-md overflow-hidden rounded-xl border border-black/10">
+      <div className="flex">
+        {/* Sticky row labels */}
+        <div className="shrink-0 border-r border-black/10 bg-white text-[11px] font-semibold text-muted">
+          <div className="flex h-10 items-center px-3">Quantity</div>
+          <div className="flex h-7 items-center px-3">Discount</div>
+          <div className="flex h-8 items-center px-3">Price/each</div>
+        </div>
+        {/* Scrollable tier columns */}
+        <div
+          ref={ref}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={end}
+          onPointerLeave={end}
+          className="no-scrollbar flex flex-1 cursor-grab select-none overflow-x-auto active:cursor-grabbing"
+        >
+          {TIERS.filter((t) => t.min >= MIN_QTY).map((t) => {
+            const isActive = t === active;
+            return (
+              <button
+                key={t.label}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => {
+                  if (drag.current.moved) return;
+                  setQty(Math.max(MIN_QTY, t.min));
+                }}
+                className={`w-[74px] shrink-0 border-l border-black/5 text-center transition first:border-l-0 ${
+                  isActive
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-white text-ink hover:bg-mint'
+                }`}
+              >
+                <span className="flex h-10 items-center justify-center px-1 text-[11px] font-semibold leading-tight">
+                  {t.label}
+                </span>
+                <span
+                  className={`flex h-7 items-center justify-center text-[11px] ${
+                    isActive ? 'text-white/80' : 'text-brand-700'
+                  }`}
+                >
+                  {t.discount}
+                </span>
+                <span className="flex h-8 items-center justify-center text-xs font-bold">
+                  {money(t.each, currencyCode)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuantityStep({
   qty,
   setQty,
+  currencyCode,
   email,
   setEmail,
   deliveryAck,
@@ -1128,6 +1247,7 @@ function QuantityStep({
 }: {
   qty: number;
   setQty: (v: number) => void;
+  currencyCode: string;
   email: string;
   setEmail: (v: string) => void;
   deliveryAck: boolean;
@@ -1140,14 +1260,11 @@ function QuantityStep({
       <Field
         n={1}
         title="Quantity"
-        hint={`Minimum order ${MIN_QTY} pieces — the more you order, the lower the unit price.`}
+        hint={`Buy more, save more — minimum order ${MIN_QTY} pieces; the more you order, the lower the unit price.`}
       >
-        <div className="flex flex-wrap items-center gap-2">
-          {[12, 24, 48, 100].map((q) => (
-            <OptionCard key={q} selected={qty === q} onClick={() => setQty(q)}>
-              {q} pcs
-            </OptionCard>
-          ))}
+        <TierTable qty={qty} setQty={setQty} currencyCode={currencyCode} />
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-sm text-muted">Or enter a quantity</span>
           <input
             type="number"
             min={MIN_QTY}
@@ -1158,6 +1275,7 @@ function QuantityStep({
             aria-label="Custom quantity"
             className="h-11 w-24 rounded-xl border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
           />
+          <span className="text-sm text-muted">pcs</span>
         </div>
         {qty < MIN_QTY ? (
           <p className="mt-2 text-xs font-semibold text-red-600">
@@ -1591,7 +1709,7 @@ function QuoteStep({
   unit: number;
   total: number;
   saved: number;
-  nextT?: {min: number; mult: number};
+  nextT?: {min: number; each: number};
   currencyCode: string;
   variantId: string | null;
   lines: Array<{
@@ -1667,8 +1785,7 @@ function QuoteStep({
           </div>
           {nextT ? (
             <p className="pt-1 text-xs text-muted">
-              Order {nextT.min}+ to drop to{' '}
-              {money(list * nextT.mult, currencyCode)}/pc.
+              Order {nextT.min}+ to drop to {money(nextT.each, currencyCode)}/pc.
             </p>
           ) : null}
         </dl>
