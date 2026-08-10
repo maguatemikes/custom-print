@@ -11,7 +11,7 @@ import {useAside} from '~/components/Aside';
 /* Config — the custom-print catalogue + placeholder pricing                  */
 /* -------------------------------------------------------------------------- */
 
-const SHAPES: Array<{name: string; note: string}> = [
+const SHAPES: Array<{name: string; note: string; soon?: boolean}> = [
   {name: 'Square', note: 'Classic four-sided'},
   {name: 'Triangle', note: 'Pre-folded, pointed'},
 ];
@@ -28,6 +28,25 @@ const SIZES: Array<{name: string; list: number}> = [
   {name: '27 x 27', list: 30},
   {name: '35 x 35', list: 40},
 ];
+
+// Triangle finished sizes — two legs × hypotenuse (leg × long edge × leg).
+const TRI_SIZES: Array<{name: string; list: number}> = [
+  {name: '14 x 20 x 14', list: 14},
+  {name: '18 x 24 x 18', list: 18},
+  {name: '22 x 30 x 22', list: 24},
+  {name: '27 x 38 x 27', list: 30},
+];
+
+// The size list depends on the chosen shape (square vs triangle cut).
+function sizesFor(shape: string) {
+  return shape === 'Triangle' ? TRI_SIZES : SIZES;
+}
+
+// A sensible default size per shape (the mid option), used when the shape flips.
+const DEFAULT_SIZE: Record<string, string> = {
+  Square: '22 x 22',
+  Triangle: '22 x 30 x 22',
+};
 
 const MIN_QTY = 12;
 
@@ -92,12 +111,9 @@ const PATTERNS: Array<{
   marks: LogoMark[];
   full?: boolean;
 }> = [
-  {
-    value: 'full',
-    label: 'Full print',
-    full: true,
-    marks: [{x: 0, y: 0, rot: 0}],
-  },
+  // Full print renders edge-to-edge (the `full` flag drives the <image> branch);
+  // it has no per-logo marks, so the array stays empty.
+  {value: 'full', label: 'Full print', full: true, marks: []},
   {value: 'single', label: 'Single', marks: [{x: 0, y: 0, rot: 0}]},
   {
     value: 'diagonal',
@@ -133,8 +149,67 @@ const PATTERNS: Array<{
   {value: 'multi-alt', label: 'Multiple · alternating', marks: gridMarks(true)},
 ];
 
-function patternMarks(value: string): LogoMark[] {
-  return PATTERNS.find((p) => p.value === value)?.marks ?? PATTERNS[0].marks;
+// Triangle layouts — the right-triangle fold (right angle bottom-left). Marks
+// are in the same mark space as the square (×2.4 in the preview); positions are
+// balanced inside the triangle so logos don't crowd the edges/hypotenuse.
+const TRI_PATTERNS: typeof PATTERNS = [
+  {value: 'tri-full', label: 'Full print', full: true, marks: []},
+  {value: 'tri-single', label: 'Center', marks: [{x: -28, y: 28, rot: 0}]},
+  {
+    value: 'tri-corners',
+    label: 'Corners ×3',
+    // The three corner dots of the (already-balanced) Six-dots grid — i.e. the
+    // Six-dots layout with its three inner dots removed.
+    marks: [
+      {x: -61, y: -27, rot: 0}, // top-left corner (six-dots)
+      {x: -61, y: 61, rot: 0}, // bottom-left corner (six-dots)
+      {x: 27, y: 61, rot: 0}, // bottom-right corner (six-dots)
+    ],
+  },
+  {
+    value: 'tri-six',
+    label: 'Six dots',
+    marks: [
+      {x: -61, y: -27, rot: 0},
+      {x: -61, y: 17, rot: 0},
+      {x: -17, y: 17, rot: 0},
+      {x: -61, y: 61, rot: 0},
+      {x: -17, y: 61, rot: 0},
+      {x: 27, y: 61, rot: 0},
+    ],
+  },
+  {
+    value: 'tri-leg',
+    label: 'Leg row',
+    // The bottom row of the balanced Six-dots grid — i.e. the Six-dots layout
+    // with its top three dots removed. Same structure, no ad-hoc coords.
+    marks: [
+      {x: -61, y: 61, rot: 0}, // bottom-left (six-dots)
+      {x: -17, y: 61, rot: 0}, // bottom-centre (six-dots)
+      {x: 27, y: 61, rot: 0}, // bottom-right (six-dots)
+    ],
+  },
+  {
+    value: 'tri-diagonal',
+    label: 'Diagonal ×3',
+    // Diagonal subset of the balanced Six-dots grid: top-left corner → centre
+    // → bottom-right corner. Evenly spaced (Δx 44, Δy 44 each step).
+    marks: [
+      {x: -61, y: -27, rot: 0}, // top-left (six-dots)
+      {x: -17, y: 17, rot: 0}, // centre (six-dots)
+      {x: 27, y: 61, rot: 0}, // bottom-right (six-dots)
+    ],
+  },
+  {
+    value: 'tri-point',
+    label: 'Point accent',
+    // Single logo on the bottom-right corner of the Six-dots grid.
+    marks: [{x: 27, y: 61, rot: 0}],
+  },
+];
+
+function patternsFor(shape: string) {
+  return shape === 'Triangle' ? TRI_PATTERNS : PATTERNS;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -284,11 +359,27 @@ async function uploadImage(
   }
 }
 
-/** Rasterize the live preview SVG to a PNG data URL (the composite proof). */
-function svgToPng(svg: SVGSVGElement, size = 600): Promise<string> {
+/**
+ * Rasterize the live preview SVG to a PNG data URL (the composite proof).
+ * For the triangle the proof stays transparent outside the fold (clipped to
+ * the right-triangle) so it reads as a triangle, not a white square; the
+ * square keeps an opaque white backing.
+ */
+function svgToPng(
+  svg: SVGSVGElement,
+  size = 600,
+  triangle = false,
+): Promise<string> {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   clone.setAttribute('width', String(size));
   clone.setAttribute('height', String(size));
+  // The on-screen white overflow-mask must not bake into the PNG — the raster
+  // clips to the triangle itself, so drop the mask to avoid a white seam.
+  if (triangle) {
+    clone
+      .querySelectorAll('[data-tri-mask]')
+      .forEach((el) => el.remove());
+  }
   const xml = new XMLSerializer().serializeToString(clone);
   const src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
   return new Promise((resolve, reject) => {
@@ -299,9 +390,24 @@ function svgToPng(svg: SVGSVGElement, size = 600): Promise<string> {
       canvas.height = size;
       const ctx = canvas.getContext('2d');
       if (!ctx) return reject(new Error('no canvas context'));
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
+      // Square: opaque white backing. Triangle: leave the canvas transparent.
+      if (!triangle) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, size, size);
+      }
       ctx.drawImage(img, 0, 0, size, size);
+      if (triangle) {
+        // Keep only the right-triangle fold (top-left → bottom-left →
+        // bottom-right); everything outside becomes transparent.
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, size);
+        ctx.lineTo(size, size);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
       resolve(canvas.toDataURL('image/png'));
     };
     img.onerror = () => reject(new Error('svg render failed'));
@@ -327,7 +433,6 @@ export default function CustomDesign() {
   const [csW, setCsW] = useState('');
   const [csH, setCsH] = useState('');
   const [material, setMaterial] = useState<string>('Cotton');
-  const [keepWhite, setKeepWhite] = useState(true);
   const [baseHex, setBaseHex] = useState('#e23b3b');
   const [qty, setQty] = useState<number>(MIN_QTY);
   const [email, setEmail] = useState('');
@@ -348,6 +453,10 @@ export default function CustomDesign() {
   // Hosted CDN URLs (Shopify Files). Null until uploaded (or if no token yet).
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [designOutput, setDesignOutput] = useState<string | null>(null);
+  // Tracks the proof upload so checkout can't fire before it's attached.
+  const [designStatus, setDesignStatus] = useState<
+    'idle' | 'pending' | 'ready' | 'error'
+  >('idle');
 
   // Restore saved progress on mount ("your selections are saved as you go").
   useEffect(() => {
@@ -362,7 +471,6 @@ export default function CustomDesign() {
       if (typeof s.customSize === 'boolean') setCustomSize(s.customSize);
       if (s.csW) setCsW(s.csW);
       if (s.csH) setCsH(s.csH);
-      if (typeof s.keepWhite === 'boolean') setKeepWhite(s.keepWhite);
       if (s.baseHex) setBaseHex(s.baseHex);
       if (s.qty) setQty(s.qty);
       if (s.email) setEmail(s.email);
@@ -390,7 +498,6 @@ export default function CustomDesign() {
           csW,
           csH,
           material,
-          keepWhite,
           baseHex,
           qty,
           email,
@@ -413,7 +520,6 @@ export default function CustomDesign() {
     csW,
     csH,
     material,
-    keepWhite,
     baseHex,
     qty,
     email,
@@ -445,21 +551,39 @@ export default function CustomDesign() {
   // "Design output" (the whole rendered bandana). Uploaded ahead of add-to-cart.
   useEffect(() => {
     if (step !== 3) return;
+    let cancelled = false;
+    setDesignStatus('pending');
     const svg = document.querySelector<SVGSVGElement>(
       'svg[aria-label$="preview"]',
     );
-    if (!svg) return;
-    let cancelled = false;
-    svgToPng(svg)
-      .then((png) => uploadImage(png, `design-output-${step}.png`))
-      .then((u) => {
-        if (!cancelled) setDesignOutput(u);
-      })
-      .catch(() => {});
+    if (!svg) {
+      setDesignStatus('error');
+      return;
+    }
+    (async () => {
+      // Try twice — a transient upload hiccup shouldn't drop the proof.
+      for (let attempt = 0; attempt < 2 && !cancelled; attempt++) {
+        try {
+          const png = await svgToPng(svg, 600, shape === 'Triangle');
+          const url = await uploadImage(png, `design-output-${step}.png`);
+          if (cancelled) return;
+          if (url) {
+            setDesignOutput(url);
+            setDesignStatus('ready');
+            return;
+          }
+        } catch {
+          /* retry */
+        }
+      }
+      if (!cancelled) setDesignStatus('error');
+    })();
     return () => {
       cancelled = true;
     };
-  }, [step]);
+    // Re-render the proof if the shape changes (square ↔ triangle affects the
+    // transparent-clip), so the hosted design output always matches the preview.
+  }, [step, shape]);
 
   const sizeReady = customSize ? Boolean(csW && csH) : Boolean(size);
   const sizeDisplay = customSize
@@ -486,9 +610,24 @@ export default function CustomDesign() {
   const saved = (BASE_PRICE - unit) * qty;
   const nt = nextTier(qty);
   const intentLabel = INTENTS.find((i) => i.value === intent)?.label ?? '';
-  const patternLabel = PATTERNS.find((p) => p.value === pattern)?.label ?? '';
-  const baseColor = keepWhite ? '#ffffff' : baseHex;
-  const baseLabel = keepWhite ? 'White base' : `${baseHex.toUpperCase()} base`;
+  // Layout is shape-aware: triangle uses its own set of balanced positions.
+  const activePatterns = patternsFor(shape);
+  const activePattern =
+    activePatterns.find((p) => p.value === pattern) ?? activePatterns[0];
+  const marks = activePattern.marks;
+  const fullDesign = Boolean(activePattern.full);
+  const patternLabel = activePattern.label;
+  const baseColor = baseHex;
+  const baseLabel = `${baseHex.toUpperCase()} base`;
+
+  // Switching shape resets the layout AND the size to valid defaults for that
+  // shape (square and triangle have different size lists).
+  const selectShape = (v: string) => {
+    setShape(v);
+    setPattern(v === 'Triangle' ? 'tri-single' : 'single');
+    setCustomSize(false);
+    setSize(DEFAULT_SIZE[v] ?? SIZES[2].name);
+  };
 
   const stepValid = [
     Boolean(shape && sizeReady && material), // Bandana
@@ -502,7 +641,7 @@ export default function CustomDesign() {
     {key: 'Shape', value: shape},
     {key: 'Size', value: sizeDisplay},
     {key: 'Material', value: material},
-    {key: 'Base colour', value: keepWhite ? 'White' : baseHex},
+    {key: 'Base colour', value: baseHex.toUpperCase()},
     {key: 'Logo layout', value: patternLabel},
     ...(logo ? [{key: 'Logo', value: logoUrl ?? logo.name}] : []),
     ...(logo
@@ -543,13 +682,10 @@ export default function CustomDesign() {
           <div className="lg:sticky lg:top-28 lg:self-start">
             <BandanaPreview
               shape={shape}
-              size={sizeDisplay}
-              material={material}
-              qty={qty}
               baseColor={baseColor}
               logoPreview={logo?.preview ?? null}
-              marks={patternMarks(pattern)}
-              fullDesign={pattern === 'full'}
+              marks={marks}
+              fullDesign={fullDesign}
               logoRotate={logoRotate}
               logoScale={logoScale}
             />
@@ -588,7 +724,7 @@ export default function CustomDesign() {
               {step === 0 ? (
                 <BandanaStep
                   shape={shape}
-                  setShape={setShape}
+                  setShape={selectShape}
                   size={size}
                   setSize={setSize}
                   customSize={customSize}
@@ -599,8 +735,6 @@ export default function CustomDesign() {
                   setCsH={setCsH}
                   material={material}
                   setMaterial={setMaterial}
-                  keepWhite={keepWhite}
-                  setKeepWhite={setKeepWhite}
                   baseHex={baseHex}
                   setBaseHex={setBaseHex}
                 />
@@ -612,6 +746,8 @@ export default function CustomDesign() {
                   setIntent={setIntent}
                   pattern={pattern}
                   setPattern={setPattern}
+                  patterns={activePatterns}
+                  isTriangle={shape === 'Triangle'}
                   logo={logo}
                   setLogo={setLogo}
                   logoError={logoError}
@@ -652,17 +788,15 @@ export default function CustomDesign() {
                   currencyCode={currencyCode}
                   variantId={variantId}
                   lines={lines}
+                  designStatus={designStatus}
                   onAdded={() => open('cart')}
                   preview={
                     <BandanaPreview
                       shape={shape}
-                      size={sizeDisplay}
-                      material={material}
-                      qty={qty}
                       baseColor={baseColor}
                       logoPreview={logo?.preview ?? null}
-                      marks={patternMarks(pattern)}
-                      fullDesign={pattern === 'full'}
+                      marks={marks}
+                      fullDesign={fullDesign}
                       logoRotate={logoRotate}
                       logoScale={logoScale}
                       compact
@@ -671,7 +805,7 @@ export default function CustomDesign() {
                   specs={[
                     {
                       label: 'Base colour',
-                      value: keepWhite ? 'White' : baseHex.toUpperCase(),
+                      value: baseHex.toUpperCase(),
                       color: baseColor,
                     },
                     {label: 'Logo layout', value: patternLabel},
@@ -726,15 +860,12 @@ export default function CustomDesign() {
 
 /**
  * Live preview tile — mirrors the PDP gallery footprint (rounded-3xl mint tile).
- * Renders a representative bandana mockup that reacts to the chosen shape/size;
- * the real artwork is collected after checkout, so the centre shows an "artwork"
- * placeholder rather than faking a design.
+ * Renders a representative bandana mockup that reacts to the chosen shape, base
+ * colour, and logo layout; the real artwork is collected after checkout, so
+ * without an uploaded logo the centre shows an "artwork" placeholder.
  */
 function BandanaPreview({
   shape,
-  size,
-  material,
-  qty,
   baseColor,
   logoPreview,
   marks,
@@ -744,9 +875,6 @@ function BandanaPreview({
   compact,
 }: {
   shape: string;
-  size: string;
-  material: string;
-  qty: number;
   baseColor: string;
   logoPreview: string | null;
   marks: LogoMark[];
@@ -756,6 +884,13 @@ function BandanaPreview({
   compact?: boolean;
 }) {
   const isTriangle = shape === 'Triangle';
+  // Right-triangle fold (right angle bottom-left, hypotenuse top-left→bottom-
+  // right) — the real shape of a corner-folded bandana. Fills the canvas; the
+  // top-right (outside) is masked so artwork never spills past the fold.
+  const triPath = 'M-200 -200 L-200 200 L200 200 Z';
+  // Masks everything outside the triangle (the top-right half) with the tile
+  // colour — rasterization-safe (a plain polygon, unlike an SVG clip-path).
+  const triMask = 'M-200 -200 L200 -200 L200 200 Z';
   const art = `rotate(${logoRotate}) scale(${logoScale / 100})`;
 
   // Placeholder ink flips to light on dark bases so it stays visible on any
@@ -773,7 +908,11 @@ function BandanaPreview({
   const phText = onDark ? 'rgba(255,255,255,0.92)' : 'rgba(16,20,16,0.45)';
   return (
     <div>
-      <div className="relative aspect-square w-full overflow-hidden rounded-3xl bg-mint">
+      <div
+        className={`relative aspect-square w-full overflow-hidden ${
+          isTriangle ? 'bg-transparent' : 'bg-mint'
+        }`}
+      >
         {!compact ? (
           <span className="eyebrow absolute left-5 top-5 z-10 text-brand-700">
             Preview
@@ -787,9 +926,9 @@ function BandanaPreview({
           aria-label={`${shape || 'Bandana'} preview`}
         >
           <g transform="translate(200 200)">
-            {/* Clean, upright bandana filling the whole canvas */}
+            {/* Clean bandana filling the canvas (square) or folded triangle. */}
             {isTriangle ? (
-              <path d="M0 -200 L200 200 L-200 200 Z" fill={baseColor} />
+              <path d={triPath} fill={baseColor} />
             ) : (
               <rect
                 x="-200"
@@ -801,9 +940,14 @@ function BandanaPreview({
             )}
 
             {fullDesign ? (
-              /* Full print — your own edge-to-edge design covers the bandana */
+              /* Full print — your edge-to-edge design, clipped to the shape */
               logoPreview ? (
-                <g transform={art}>
+                /* Full print — centre the design on the triangle's centroid
+                   (−67, 67) so it sits in the middle of the fold, not on the
+                   hypotenuse; the square keeps canvas-centre. */
+                <g
+                  transform={`${isTriangle ? 'translate(-67 67) ' : ''}${art}`}
+                >
                   <image
                     href={logoPreview}
                     x="-200"
@@ -813,6 +957,28 @@ function BandanaPreview({
                     preserveAspectRatio="xMidYMid slice"
                   />
                 </g>
+              ) : isTriangle ? (
+                <>
+                  {/* Placeholder outline sits inside the right triangle. */}
+                  <path
+                    d="M-170 -125 L-170 170 L125 170 Z"
+                    fill="none"
+                    stroke={phStroke}
+                    strokeWidth="2"
+                    strokeDasharray="9 9"
+                  />
+                  <text
+                    x="-58"
+                    y="82"
+                    textAnchor="middle"
+                    fontSize="15"
+                    fontWeight="700"
+                    fill={phText}
+                    letterSpacing="1.5"
+                  >
+                    YOUR DESIGN
+                  </text>
+                </>
               ) : (
                 <>
                   <rect
@@ -843,7 +1009,7 @@ function BandanaPreview({
               marks.map((m, i) => (
                 <g
                   key={i}
-                  transform={`translate(${m.x * 2.4} ${m.y * 2.4 + (isTriangle ? 45 : 0)}) rotate(${m.rot})`}
+                  transform={`translate(${m.x * 2.4} ${m.y * 2.4}) rotate(${m.rot})`}
                 >
                   {logoPreview ? (
                     <image
@@ -884,6 +1050,14 @@ function BandanaPreview({
                 </g>
               ))
             )}
+
+            {/* Mask the top-right (outside the fold) with the page colour so the
+                triangle stands alone (no grey square) and artwork never spills.
+                Tagged so svgToPng can drop it — the PNG clips to the triangle
+                and stays transparent outside instead of baking a white square. */}
+            {isTriangle ? (
+              <path d={triMask} fill="#ffffff" data-tri-mask="1" />
+            ) : null}
           </g>
         </svg>
       </div>
@@ -985,20 +1159,25 @@ function OptionCard({
   selected,
   onClick,
   children,
+  disabled = false,
 }: {
   selected: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       aria-pressed={selected}
       onClick={onClick}
+      disabled={disabled}
       className={`h-11 rounded-xl border px-4 text-sm font-semibold transition ${
-        selected
-          ? 'border-ink bg-ink text-white'
-          : 'border-black/15 bg-white text-ink hover:border-ink'
+        disabled
+          ? 'cursor-not-allowed border-black/10 bg-black/[0.04] text-muted'
+          : selected
+            ? 'border-ink bg-ink text-white'
+            : 'border-black/15 bg-white text-ink hover:border-ink'
       }`}
     >
       {children}
@@ -1019,8 +1198,6 @@ function BandanaStep({
   setCsH,
   material,
   setMaterial,
-  keepWhite,
-  setKeepWhite,
   baseHex,
   setBaseHex,
 }: {
@@ -1036,8 +1213,6 @@ function BandanaStep({
   setCsH: (v: string) => void;
   material: string;
   setMaterial: (v: string) => void;
-  keepWhite: boolean;
-  setKeepWhite: (v: boolean) => void;
   baseHex: string;
   setBaseHex: (v: string) => void;
 }) {
@@ -1046,19 +1221,9 @@ function BandanaStep({
       <Field
         n={1}
         title="Base colour"
-        hint="Start on a white base, or pick any colour from the spectrum."
+        hint="Pick any colour from the spectrum."
       >
-        <div className="mb-3 grid grid-cols-2 gap-2">
-          <OptionCard selected={keepWhite} onClick={() => setKeepWhite(true)}>
-            White base
-          </OptionCard>
-          <OptionCard selected={!keepWhite} onClick={() => setKeepWhite(false)}>
-            Custom colour
-          </OptionCard>
-        </div>
-        {!keepWhite ? (
-          <ColorSpectrum value={baseHex} onChange={setBaseHex} />
-        ) : null}
+        <ColorSpectrum value={baseHex} onChange={setBaseHex} />
       </Field>
 
       <Field n={2} title="Bandana shape" hint="Choose the cut of your bandana.">
@@ -1068,9 +1233,12 @@ function BandanaStep({
             <OptionCard
               key={s.name}
               selected={shape === s.name}
-              onClick={() => setShape(s.name)}
+              disabled={s.soon}
+              onClick={() => {
+                if (!s.soon) setShape(s.name);
+              }}
             >
-              {s.name}
+              {s.soon ? `${s.name} · Coming soon` : s.name}
             </OptionCard>
           ))}
         </div>
@@ -1089,7 +1257,7 @@ function BandanaStep({
             }
           }}
           options={[
-            ...SIZES.map((s) => ({value: s.name, label: `${s.name} in`})),
+            ...sizesFor(shape).map((s) => ({value: s.name, label: `${s.name} in`})),
             {value: 'custom', label: 'Custom size — enter your own'},
           ]}
         />
@@ -1332,20 +1500,46 @@ function QuantityStep({
 }
 
 /** Mini thumbnail illustrating a logo layout (dots). */
-function PatternThumb({marks}: {marks: LogoMark[]}) {
+function PatternThumb({
+  marks,
+  triangle = false,
+  active = false,
+}: {
+  marks: LogoMark[];
+  triangle?: boolean;
+  active?: boolean;
+}) {
+  const s = triangle ? 1.05 : 1.45;
+  // Triangle dots render on an ~80px SVG vs the square's 44px, so shrink them to
+  // read at the same on-screen size (12/180×80 ≈ 22/180×44 ≈ 5.4px).
+  const dot = triangle ? 12 : 22;
+  const r = dot / 2;
+  const rx = triangle ? 2 : 4;
+  // Triangle chips ARE a solid triangle (no square frame): the triangle carries
+  // the selected state (dark when active, muted grey otherwise), and the logo
+  // dots punch through as white (the card behind the chip).
+  const triFill = active ? '#0b1622' : '#cbd5e1';
+  const dotFill = triangle ? '#ffffff' : 'currentColor';
   return (
-    <svg viewBox="-90 -90 180 180" className="h-11 w-11" aria-hidden="true">
+    <svg
+      viewBox="-90 -90 180 180"
+      className={triangle ? 'h-full w-full' : 'h-11 w-11'}
+      aria-hidden="true"
+    >
+      {triangle ? (
+        <path d="M-87.5 -87.5 L-87.5 87.5 L87.5 87.5 Z" fill={triFill} />
+      ) : null}
       {marks.map((m, i) => (
         <rect
           key={i}
-          x="-11"
-          y="-11"
-          width="22"
-          height="22"
-          rx="4"
-          transform={`translate(${m.x * 1.45} ${m.y * 1.45}) rotate(${m.rot})`}
-          fill="currentColor"
-          opacity="0.85"
+          x={-r}
+          y={-r}
+          width={dot}
+          height={dot}
+          rx={rx}
+          transform={`translate(${m.x * s} ${m.y * s}) rotate(${m.rot})`}
+          fill={dotFill}
+          opacity={triangle ? 1 : 0.85}
         />
       ))}
     </svg>
@@ -1357,6 +1551,8 @@ function DesignStep({
   setIntent,
   pattern,
   setPattern,
+  patterns,
+  isTriangle,
   logo,
   setLogo,
   logoError,
@@ -1370,6 +1566,8 @@ function DesignStep({
   setIntent: (v: string) => void;
   pattern: string;
   setPattern: (v: string) => void;
+  patterns: typeof PATTERNS;
+  isTriangle: boolean;
   logo: {
     name: string;
     type: string;
@@ -1612,7 +1810,7 @@ function DesignStep({
           onPointerLeave={endSliderDrag}
           className="no-scrollbar flex max-w-sm cursor-grab select-none gap-2 overflow-x-auto pb-1 active:cursor-grabbing"
         >
-          {PATTERNS.map((p) => {
+          {patterns.map((p) => {
             const active = pattern === p.value;
             return (
               <button
@@ -1625,18 +1823,31 @@ function DesignStep({
                   if (drag.current.moved) return; // ignore click after a drag
                   setPattern(p.value);
                 }}
-                className={`grid aspect-square w-20 shrink-0 snap-start place-items-center rounded-xl border transition ${
-                  active
-                    ? 'border-ink bg-ink text-white'
-                    : 'border-black/15 bg-white text-ink hover:border-ink'
-                }`}
+                className={
+                  isTriangle
+                    ? 'grid aspect-square w-20 shrink-0 snap-start place-items-center bg-transparent transition hover:opacity-80'
+                    : `grid aspect-square w-20 shrink-0 snap-start place-items-center rounded-xl border transition ${
+                        active
+                          ? 'border-ink bg-ink text-white'
+                          : 'border-black/15 bg-white text-ink hover:border-ink'
+                      }`
+                }
               >
                 {p.full ? (
-                  <span className="px-1 text-center text-[11px] font-semibold leading-tight">
-                    {p.label}
-                  </span>
+                  isTriangle ? (
+                    /* Full print = a solid triangle with no logo dots. */
+                    <PatternThumb marks={[]} triangle active={active} />
+                  ) : (
+                    <span className="px-1 text-center text-[11px] font-semibold leading-tight">
+                      {p.label}
+                    </span>
+                  )
                 ) : (
-                  <PatternThumb marks={p.marks} />
+                  <PatternThumb
+                    marks={p.marks}
+                    triangle={isTriangle}
+                    active={active}
+                  />
                 )}
               </button>
             );
@@ -1696,6 +1907,7 @@ function QuoteStep({
   currencyCode,
   variantId,
   lines,
+  designStatus,
   onAdded,
   preview,
   specs,
@@ -1718,6 +1930,7 @@ function QuoteStep({
     selectedVariant?: unknown;
     attributes: Array<{key: string; value: string}>;
   }>;
+  designStatus: 'idle' | 'pending' | 'ready' | 'error';
   onAdded: () => void;
   preview: React.ReactNode;
   specs: Array<{label: string; value: string; color?: string}>;
@@ -1793,13 +2006,25 @@ function QuoteStep({
 
       <div className="mt-5 [&_form]:max-w-full">
         {variantId ? (
-          <AddToCartButton
-            className="btn w-full min-h-11 bg-orange-500 text-white transition-colors hover:bg-orange-600"
-            onClick={onAdded}
-            lines={lines}
-          >
-            Add to Cart — {money(total, currencyCode)}
-          </AddToCartButton>
+          designStatus === 'pending' || designStatus === 'idle' ? (
+            /* Hold checkout until the design proof is uploaded, so the order
+               always carries the customer's rendered design. */
+            <button
+              type="button"
+              disabled
+              className="btn w-full min-h-11 cursor-wait bg-orange-500/60 text-white"
+            >
+              Preparing your design…
+            </button>
+          ) : (
+            <AddToCartButton
+              className="btn w-full min-h-11 bg-orange-500 text-white transition-colors hover:bg-orange-600"
+              onClick={onAdded}
+              lines={lines}
+            >
+              Add to Cart — {money(total, currencyCode)}
+            </AddToCartButton>
+          )
         ) : (
           <div className="rounded-xl border border-dashed border-black/20 bg-mint p-4 text-center text-sm text-muted">
             The made-to-order custom product isn&apos;t set up in Shopify yet.

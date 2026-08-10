@@ -39,9 +39,20 @@ export function Footer({
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-5">
           {/* Brand */}
           <div className="lg:col-span-2">
-            <span className="text-2xl font-extrabold lowercase tracking-tight text-white">
-              custom<span className="text-brand-400">bandanas</span>
-            </span>
+            <Link
+              to="/"
+              prefetch="intent"
+              aria-label="Wholesale For Everyone — home"
+              className="inline-flex"
+            >
+              <img
+                src="/wfe-logo.jpg"
+                alt="Wholesale For Everyone"
+                width={300}
+                height={71}
+                className="h-10 w-auto rounded-md bg-white p-2"
+              />
+            </Link>
             <p className="mt-4 max-w-xs text-sm text-white/60">
               Custom-printed bandanas and merch, made to order for brands,
               teams, schools, and events.

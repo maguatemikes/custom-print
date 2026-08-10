@@ -3,7 +3,6 @@ import type {CartLayout} from '~/components/CartMain';
 import {CartForm, Money, type OptimisticCart} from '@shopify/hydrogen';
 import {Link} from 'react-router';
 import {useAside} from '~/components/Aside';
-import {CartDeliveryOptions} from '~/components/CartDeliveryOptions';
 
 type CartSummaryProps = {
   cart: OptimisticCart<CartApiQueryFragment | null>;
@@ -71,9 +70,6 @@ export function CartSummary({cart, layout}: CartSummaryProps) {
           {subtotal?.amount ? <Money data={subtotal} /> : '—'}
         </span>
       </div>
-
-      {/* Path B — native fulfillment method selector (Ship / Pickup / Local) */}
-      <CartDeliveryOptions cart={cart} />
 
       {/* Actions */}
       <div className="space-y-2">

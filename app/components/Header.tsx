@@ -504,43 +504,13 @@ function CartBanner() {
 /* -------------------------------------------------------------------------- */
 function Logo() {
   return (
-    <svg
-      viewBox="0 0 330 52"
-      className="h-6 w-auto md:h-7"
-      role="img"
-      aria-label="custombandanas"
-    >
-      {/* "custom" is masked with a geometric bandana pattern; "bandanas" is solid. */}
-      <defs>
-        <pattern
-          id="logoBandana"
-          patternUnits="userSpaceOnUse"
-          width="24"
-          height="24"
-        >
-          <rect width="24" height="24" fill="#a81f1f" />
-          <circle cx="6" cy="6" r="6" fill="#e8631f" />
-          <rect x="12" y="0" width="12" height="12" fill="#e23b3b" />
-          <path d="M0 24 L12 12 L12 24 Z" fill="#f2a616" />
-          <path d="M24 12 L24 24 L12 24 Z" fill="#101410" />
-          <circle cx="18" cy="18" r="4" fill="#f3ead6" />
-          <rect x="0" y="12" width="6" height="6" fill="#f3ead6" />
-        </pattern>
-      </defs>
-      <text
-        x="2"
-        y="38"
-        fontFamily="Inter, system-ui, sans-serif"
-        fontWeight="800"
-        fontSize="44"
-        letterSpacing="-2.5"
-        textLength="326"
-        lengthAdjust="spacingAndGlyphs"
-      >
-        <tspan fill="url(#logoBandana)">custom</tspan>
-        <tspan fill="#101410">bandanas</tspan>
-      </text>
-    </svg>
+    <img
+      src="/wfe-logo.jpg"
+      alt="Wholesale For Everyone"
+      width={300}
+      height={71}
+      className="h-8 w-auto md:h-9"
+    />
   );
 }
 

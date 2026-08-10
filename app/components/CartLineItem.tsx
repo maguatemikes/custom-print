@@ -37,6 +37,13 @@ export function CartLineItem({
     (o) => o.value && o.value !== 'Default Title',
   );
 
+  // Custom-print lines carry a hosted "Design output" proof (the whole rendered
+  // bandana). Use it as the thumbnail so the customer sees their design right in
+  // the cart — the variant image is empty for the made-to-order product.
+  const designOutput = line.attributes?.find(
+    (a) => a.key === 'Design output',
+  )?.value;
+
   return (
     <li
       key={id}
@@ -52,7 +59,18 @@ export function CartLineItem({
           onClick={() => layout === 'aside' && close()}
           className="shrink-0"
         >
-          {image ? (
+          {designOutput ? (
+            // The design proof (transparent for triangles) — object-contain so
+            // the whole shape shows; bg-mint fills any transparent area on-brand.
+            <img
+              src={designOutput}
+              alt={`${product.title} — your design`}
+              height={80}
+              width={80}
+              loading="lazy"
+              className="h-20 w-20 rounded-xl bg-mint object-contain"
+            />
+          ) : image ? (
             <Image
               alt={title}
               aspectRatio="1/1"
