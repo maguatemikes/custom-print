@@ -52,6 +52,23 @@ a:hover {
   cursor: pointer;
 }
 
+/* Clickable elements get the pointer cursor — Tailwind's reset otherwise leaves
+   native <button>s on the default arrow. This lives in @layer base, so cursor
+   utilities (cursor-grab on the drag carousels, cursor-crosshair on the colour
+   field, cursor-wait / disabled:cursor-not-allowed) still win over it. */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+[role='option'],
+summary,
+select {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
 hr {
   border-bottom: none;
   border-top: 1px solid #000;

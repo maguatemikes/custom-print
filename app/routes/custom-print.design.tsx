@@ -217,18 +217,22 @@ function patternsFor(shape: string) {
 /* -------------------------------------------------------------------------- */
 
 export const meta: Route.MetaFunction = ({matches}) => {
-  const title = 'Design your custom bandana — custombandanas';
+  const title = 'Design your custom bandana online — Custom Bandanas';
   const description =
-    'Build your fully custom, made-to-order bandana in four steps: shape & size, quantity, design help, and an instant quote. Printed to order — proof before we print.';
+    'Design custom-printed bandanas online in four steps: shape & size, quantity, design help, and an instant quote. Full-color digital printing, made to order, proofed before we print, with bulk & wholesale pricing.';
   const url = `${siteOrigin(matches)}/custom-print/design`;
   return [
     {title},
     {name: 'description', content: description},
     {tagName: 'link', rel: 'canonical', href: url},
     {property: 'og:type', content: 'website'},
+    {property: 'og:site_name', content: 'Custom Bandanas'},
     {property: 'og:title', content: title},
     {property: 'og:description', content: description},
     {property: 'og:url', content: url},
+    {name: 'twitter:card', content: 'summary_large_image'},
+    {name: 'twitter:title', content: title},
+    {name: 'twitter:description', content: description},
   ];
 };
 
@@ -450,6 +454,10 @@ export default function CustomDesign() {
   const [logoError, setLogoError] = useState<string | null>(null);
   const [logoRotate, setLogoRotate] = useState(0);
   const [logoScale, setLogoScale] = useState(100);
+  // Column / row spacing of a repeating layout (100% = the preset positions).
+  // Spreads the logos apart from their group centre; fly-off the edge is allowed.
+  const [colSpace, setColSpace] = useState(100);
+  const [rowSpace, setRowSpace] = useState(100);
   // Hosted CDN URLs (Shopify Files). Null until uploaded (or if no token yet).
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [designOutput, setDesignOutput] = useState<string | null>(null);
@@ -457,6 +465,8 @@ export default function CustomDesign() {
   const [designStatus, setDesignStatus] = useState<
     'idle' | 'pending' | 'ready' | 'error'
   >('idle');
+  // Bumped by the "Retry" button to re-run the proof generation after a failure.
+  const [retryNonce, setRetryNonce] = useState(0);
 
   // Restore saved progress on mount ("your selections are saved as you go").
   useEffect(() => {
@@ -480,6 +490,8 @@ export default function CustomDesign() {
       if (s.pattern) setPattern(s.pattern);
       if (typeof s.logoRotate === 'number') setLogoRotate(s.logoRotate);
       if (typeof s.logoScale === 'number') setLogoScale(s.logoScale);
+      if (typeof s.colSpace === 'number') setColSpace(s.colSpace);
+      if (typeof s.rowSpace === 'number') setRowSpace(s.rowSpace);
     } catch {
       /* ignore corrupt state */
     }
@@ -507,6 +519,8 @@ export default function CustomDesign() {
           pattern,
           logoRotate,
           logoScale,
+          colSpace,
+          rowSpace,
         }),
       );
     } catch {
@@ -529,6 +543,8 @@ export default function CustomDesign() {
     pattern,
     logoRotate,
     logoScale,
+    colSpace,
+    rowSpace,
   ]);
 
   // Upload the logo to Shopify Files the moment it's chosen (so the CDN URL is
@@ -553,6 +569,9 @@ export default function CustomDesign() {
     if (step !== 3) return;
     let cancelled = false;
     setDesignStatus('pending');
+    // Drop any previous proof up front so a failed re-generation can never
+    // re-attach a stale (out-of-date) design output to the order.
+    setDesignOutput(null);
     const svg = document.querySelector<SVGSVGElement>(
       'svg[aria-label$="preview"]',
     );
@@ -582,8 +601,9 @@ export default function CustomDesign() {
       cancelled = true;
     };
     // Re-render the proof if the shape changes (square ↔ triangle affects the
-    // transparent-clip), so the hosted design output always matches the preview.
-  }, [step, shape]);
+    // transparent-clip) or the shopper hits Retry, so the hosted design output
+    // always matches the preview.
+  }, [step, shape, retryNonce]);
 
   const sizeReady = customSize ? Boolean(csW && csH) : Boolean(size);
   const sizeDisplay = customSize
@@ -593,15 +613,19 @@ export default function CustomDesign() {
       : '';
 
   // Match the chosen Size + Material to a real Shopify variant (custom → the
-  // "Custom" size variant). Price + checkout come from that variant.
+  // "Custom" size variant). Price + checkout come from that variant. Compare
+  // sizes space-/case-insensitively so a Shopify typo like "22x30x22" vs the
+  // wizard's "22 x 30 x 22" still matches (otherwise variantId is null →
+  // checkout is silently blocked for that size).
   const sizeOption = customSize ? 'Custom' : size;
-  const selectedVariant = useMemo(
-    () =>
+  const selectedVariant = useMemo(() => {
+    const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+    return (
       variants.find(
-        (v) => v.size === sizeOption && v.material === material,
-      ) ?? null,
-    [variants, sizeOption, material],
-  );
+        (v) => norm(v.size) === norm(sizeOption) && v.material === material,
+      ) ?? null
+    );
+  }, [variants, sizeOption, material]);
   const variantId = selectedVariant?.id ?? null;
   // "Buy more, save more" tiered pricing (mirrors the Shopify discount function).
   const unit = unitPriceFor(qty);
@@ -647,7 +671,21 @@ export default function CustomDesign() {
     ...(logo
       ? [{key: 'Logo adjust', value: `${logoRotate}° · ${logoScale}%`}]
       : []),
-    ...(designOutput ? [{key: 'Design output', value: designOutput}] : []),
+    ...(logo && marks.length > 1
+      ? [{key: 'Logo spacing', value: `col ${colSpace}% · row ${rowSpace}%`}]
+      : []),
+    ...(designOutput
+      ? [{key: 'Design output', value: designOutput}]
+      : designStatus === 'error'
+        ? // Never silently drop the proof: if the upload failed and the shopper
+          // proceeds anyway, flag it so production chases the artwork.
+          [
+            {
+              key: 'Design output',
+              value: '⚠ Upload failed — proof to follow by email',
+            },
+          ]
+        : []),
     {key: 'Quantity', value: String(qty)},
     {key: 'Design help', value: intentLabel},
     {key: 'Contact email', value: email},
@@ -688,11 +726,15 @@ export default function CustomDesign() {
               fullDesign={fullDesign}
               logoRotate={logoRotate}
               logoScale={logoScale}
+              colSpace={colSpace}
+              rowSpace={rowSpace}
             />
           </div>
 
-          {/* Right — configurator (PDP info column) */}
-          <div className="lg:py-2">
+          {/* Right — configurator (PDP info column). min-w-0 lets this grid
+              column shrink to its track so the full-width layout slider scrolls
+              inside it instead of stretching the whole column. */}
+          <div className="min-w-0 lg:py-2">
             <p className="eyebrow text-brand-700">Custom Print</p>
             <h1 className="mt-1 text-3xl font-extrabold uppercase leading-tight tracking-tight md:text-4xl">
               Design your bandana
@@ -756,6 +798,10 @@ export default function CustomDesign() {
                   setLogoRotate={setLogoRotate}
                   logoScale={logoScale}
                   setLogoScale={setLogoScale}
+                  colSpace={colSpace}
+                  setColSpace={setColSpace}
+                  rowSpace={rowSpace}
+                  setRowSpace={setRowSpace}
                 />
               ) : null}
 
@@ -790,6 +836,7 @@ export default function CustomDesign() {
                   lines={lines}
                   designStatus={designStatus}
                   onAdded={() => open('cart')}
+                  onRetry={() => setRetryNonce((n) => n + 1)}
                   preview={
                     <BandanaPreview
                       shape={shape}
@@ -799,6 +846,8 @@ export default function CustomDesign() {
                       fullDesign={fullDesign}
                       logoRotate={logoRotate}
                       logoScale={logoScale}
+                      colSpace={colSpace}
+                      rowSpace={rowSpace}
                       compact
                     />
                   }
@@ -808,16 +857,16 @@ export default function CustomDesign() {
                       value: baseHex.toUpperCase(),
                       color: baseColor,
                     },
-                    {label: 'Logo layout', value: patternLabel},
+                    {label: 'Logo / design layout', value: patternLabel},
                     ...(logo
                       ? [
-                          {label: 'Logo', value: logo.name},
+                          {label: 'Logo / design', value: logo.name},
                           {
                             label: 'Rotate / size',
                             value: `${logoRotate}° · ${logoScale}%`,
                           },
                         ]
-                      : [{label: 'Logo', value: 'None'}]),
+                      : [{label: 'Logo / design', value: 'None'}]),
                     {label: 'Design help', value: intentLabel},
                   ]}
                 />
@@ -830,7 +879,7 @@ export default function CustomDesign() {
                 type="button"
                 onClick={() => setStep((s) => Math.max(0, s - 1))}
                 disabled={step === 0}
-                className="btn btn-ghost text-ink disabled:opacity-0"
+                className="btn btn-outline min-h-11 px-6 disabled:opacity-0"
               >
                 ← Back
               </button>
@@ -872,6 +921,8 @@ function BandanaPreview({
   fullDesign,
   logoRotate,
   logoScale,
+  colSpace = 100,
+  rowSpace = 100,
   compact,
 }: {
   shape: string;
@@ -881,9 +932,25 @@ function BandanaPreview({
   fullDesign: boolean;
   logoRotate: number;
   logoScale: number;
+  colSpace?: number;
+  rowSpace?: number;
   compact?: boolean;
 }) {
   const isTriangle = shape === 'Triangle';
+  // Column / row spacing spreads the repeating logos apart FROM THEIR OWN group
+  // centre (so the arrangement stays put and just expands), not the canvas
+  // centre. Single-logo layouts have their centre on the logo, so it's a no-op.
+  const gcx = marks.length
+    ? marks.reduce((a, m) => a + m.x, 0) / marks.length
+    : 0;
+  const gcy = marks.length
+    ? marks.reduce((a, m) => a + m.y, 0) / marks.length
+    : 0;
+  const spacedMarks = marks.map((m) => ({
+    ...m,
+    x: gcx + (m.x - gcx) * (colSpace / 100),
+    y: gcy + (m.y - gcy) * (rowSpace / 100),
+  }));
   // Right-triangle fold (right angle bottom-left, hypotenuse top-left→bottom-
   // right) — the real shape of a corner-folded bandana. Fills the canvas; the
   // top-right (outside) is masked so artwork never spills past the fold.
@@ -914,7 +981,13 @@ function BandanaPreview({
         }`}
       >
         {!compact ? (
-          <span className="eyebrow absolute left-5 top-5 z-10 text-brand-700">
+          // Adaptive contrast like the artwork placeholder — blends into the
+          // base colour (light on dark bases, subtle dark on light bases)
+          // instead of a fixed brand-blue label.
+          <span
+            className="eyebrow absolute left-5 top-5 z-10"
+            style={{color: phText}}
+          >
             Preview
           </span>
         ) : null}
@@ -1005,8 +1078,8 @@ function BandanaPreview({
                 </>
               )
             ) : (
-              /* Logo layout — uploaded artwork or a placeholder */
-              marks.map((m, i) => (
+              /* Logo layout — uploaded artwork or a placeholder (spaced) */
+              spacedMarks.map((m, i) => (
                 <g
                   key={i}
                   transform={`translate(${m.x * 2.4} ${m.y * 2.4}) rotate(${m.rot})`}
@@ -1080,6 +1153,12 @@ function ProgressBar({step}: {step: number}) {
   // already looks underway (stops on circle 2) — a nudge to finish.
   const reached = Math.min(step + 1, STEPS.length - 1);
   const pct = Math.round((reached / (STEPS.length - 1)) * 100);
+  // Flip the bar from brand-blue to green once the track is full — a
+  // completion/"almost done" cue that nudges the shopper to finish.
+  const complete = pct >= 100;
+  // Whole progress is green (fill + completed circles) — inline so nothing (stale
+  // dev CSS or Tailwind) can override it. The % label deepens to green-600 at 100%.
+  const barColor = '#22c55e';
   return (
     <div
       className="mt-5"
@@ -1094,24 +1173,30 @@ function ProgressBar({step}: {step: number}) {
           Step {step + 1} of {STEPS.length} ·{' '}
           <span className="text-muted">{STEPS[step]}</span>
         </span>
-        <span className="text-muted">{pct}%</span>
+        <span
+          className={complete ? '' : 'text-muted'}
+          style={complete ? {color: '#16a34a'} : undefined}
+        >
+          {pct}%
+        </span>
       </div>
 
       {/* Continuous filled track with step circles on top */}
       <div className="relative flex items-center justify-between">
         <span className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-mint" />
         <span
-          className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-brand-500 transition-all duration-300"
-          style={{width: `${pct}%`}}
+          className="absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full transition-[width] duration-300"
+          style={{width: `${pct}%`, backgroundColor: barColor}}
         />
         {STEPS.map((label, i) => {
           const passed = i <= reached;
           return (
             <span
               key={label}
-              className={`relative z-10 grid h-4 w-4 place-items-center rounded-full text-[9px] font-bold ring-2 ring-paper transition-colors ${
-                passed ? 'bg-brand-500 text-white' : 'bg-mint text-muted'
+              className={`relative z-10 grid h-4 w-4 place-items-center rounded-full text-[9px] font-bold ring-2 ring-paper ${
+                passed ? 'text-white' : 'bg-mint text-muted'
               }`}
+              style={passed ? {backgroundColor: barColor} : undefined}
             >
               {passed ? '✓' : null}
             </span>
@@ -1467,33 +1552,122 @@ function QuantityStep({
         />
       </Field>
 
-      <div className="rounded-xl bg-mint p-4">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-ink">
-          Delivery time
-        </h3>
-        <p className="mt-1 text-sm text-muted">
+      <div className="rounded-2xl border border-black/10 bg-mint/60 p-5">
+        {/* Info — the context */}
+        <h3 className="eyebrow text-brand-700">Delivery time</h3>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
           Standard production &amp; delivery is roughly 20–30 business days after
           your design is approved. Rush options may be available — ask our team.
         </p>
-        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={deliveryAck}
-            onChange={(e) => setDeliveryAck(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-brand-600"
-          />
-          I understand and acknowledge the estimated delivery time.
-        </label>
-        <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={terms}
-            onChange={(e) => setTerms(e.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-brand-600"
-          />
-          I agree to the Terms &amp; Conditions and understand custom orders are
-          non-refundable once production begins.
-        </label>
+
+        {/* Separate the context from the actions */}
+        <div className="my-4 border-t border-black/10" />
+
+        {/* Acknowledgments — the actions, grouped and evenly spaced */}
+        <div className="space-y-3">
+          <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-ink">
+            <input
+              type="checkbox"
+              checked={deliveryAck}
+              onChange={(e) => setDeliveryAck(e.target.checked)}
+              className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-brand-600"
+            />
+            <span>I understand and acknowledge the estimated delivery time.</span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-ink">
+            <input
+              type="checkbox"
+              checked={terms}
+              onChange={(e) => setTerms(e.target.checked)}
+              className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-brand-600"
+            />
+            <span>
+              I agree to the Terms &amp; Conditions and understand custom orders
+              are non-refundable once production begins.
+            </span>
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Labelled range control with − / + nudge buttons flanking the slider — matches
+ * the Rotate control's [button][slider][button] shape so Size, Column space, and
+ * Row space read as one balanced set of editor controls.
+ */
+function NudgeRow({
+  label,
+  value,
+  min,
+  max,
+  step = 10,
+  suffix = '%',
+  onChange,
+  ariaLabel,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix?: string;
+  onChange: (v: number) => void;
+  ariaLabel: string;
+}) {
+  const clamp = (v: number) => Math.min(max, Math.max(min, v));
+  const btn =
+    'grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-black/15 bg-white text-ink hover:border-ink';
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between text-xs font-semibold text-ink">
+        <span>{label}</span>
+        <span className="text-muted">
+          {value}
+          {suffix}
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label={`Decrease ${label}`}
+          onClick={() => onChange(clamp(value - step))}
+          className={btn}
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
+            <path
+              d="M5 12h14"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          aria-label={ariaLabel}
+          className="h-2 w-full accent-brand-600"
+        />
+        <button
+          type="button"
+          aria-label={`Increase ${label}`}
+          onClick={() => onChange(clamp(value + step))}
+          className={btn}
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" aria-hidden="true">
+            <path
+              d="M12 5v14M5 12h14"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
       </div>
     </div>
   );
@@ -1561,6 +1735,10 @@ function DesignStep({
   setLogoRotate,
   logoScale,
   setLogoScale,
+  colSpace,
+  setColSpace,
+  rowSpace,
+  setRowSpace,
 }: {
   intent: string;
   setIntent: (v: string) => void;
@@ -1590,8 +1768,16 @@ function DesignStep({
   setLogoRotate: (v: number) => void;
   logoScale: number;
   setLogoScale: (v: number) => void;
+  colSpace: number;
+  setColSpace: (v: number) => void;
+  rowSpace: number;
+  setRowSpace: (v: number) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  // Spacing controls only make sense for a repeating (multi-logo) layout.
+  const activeMarks =
+    patterns.find((p) => p.value === pattern)?.marks ?? [];
+  const isRepeating = activeMarks.length > 1;
 
   // Drag-to-scroll for the pattern slider (desktop has no touch/scrollbar).
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -1654,7 +1840,7 @@ function DesignStep({
     <div>
       <Field
         n={1}
-        title="Upload your logo"
+        title="Upload your logo / design"
         hint="Optional — PNG, JPG, SVG or PDF. We check print quality and send a proof."
       >
         {!logo ? (
@@ -1778,29 +1964,42 @@ function DesignStep({
                 </button>
               </div>
             </div>
-            <div>
-              <div className="mb-1 flex items-center justify-between text-xs font-semibold text-ink">
-                <span>Size</span>
-                <span className="text-muted">{logoScale}%</span>
-              </div>
-              <input
-                type="range"
-                min={40}
-                max={160}
-                value={logoScale}
-                onChange={(e) => setLogoScale(Number(e.target.value))}
-                aria-label="Logo size"
-                className="h-2 w-full accent-brand-600"
-              />
-            </div>
+            <NudgeRow
+              label="Size"
+              value={logoScale}
+              min={40}
+              max={300}
+              onChange={setLogoScale}
+              ariaLabel="Logo size"
+            />
+            {isRepeating ? (
+              <>
+                <NudgeRow
+                  label="Column space"
+                  value={colSpace}
+                  min={20}
+                  max={300}
+                  onChange={setColSpace}
+                  ariaLabel="Column spacing"
+                />
+                <NudgeRow
+                  label="Row space"
+                  value={rowSpace}
+                  min={20}
+                  max={300}
+                  onChange={setRowSpace}
+                  ariaLabel="Row spacing"
+                />
+              </>
+            ) : null}
           </div>
         ) : null}
       </Field>
 
       <Field
         n={2}
-        title="Logo layout"
-        hint="Choose how your logo repeats across the bandana."
+        title="Logo / design layout"
+        hint="Choose how your logo or design repeats across the bandana."
       >
         <div
           ref={sliderRef}
@@ -1808,7 +2007,7 @@ function DesignStep({
           onPointerMove={onSliderMove}
           onPointerUp={endSliderDrag}
           onPointerLeave={endSliderDrag}
-          className="no-scrollbar flex max-w-sm cursor-grab select-none gap-2 overflow-x-auto pb-1 active:cursor-grabbing"
+          className="no-scrollbar flex w-full cursor-grab select-none gap-2 overflow-x-auto pb-1 active:cursor-grabbing"
         >
           {patterns.map((p) => {
             const active = pattern === p.value;
@@ -1909,6 +2108,7 @@ function QuoteStep({
   lines,
   designStatus,
   onAdded,
+  onRetry,
   preview,
   specs,
 }: {
@@ -1932,6 +2132,7 @@ function QuoteStep({
   }>;
   designStatus: 'idle' | 'pending' | 'ready' | 'error';
   onAdded: () => void;
+  onRetry: () => void;
   preview: React.ReactNode;
   specs: Array<{label: string; value: string; color?: string}>;
 }) {
@@ -2016,6 +2217,30 @@ function QuoteStep({
             >
               Preparing your design…
             </button>
+          ) : designStatus === 'error' ? (
+            /* Proof upload failed — never proceed silently. Retry is the primary
+               action; adding to cart anyway attaches a "proof pending" flag (see
+               the Design output attribute) so production chases the artwork. */
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="btn w-full min-h-11 bg-orange-500 text-white transition-colors hover:bg-orange-600"
+              >
+                Couldn&apos;t prepare your design — Retry
+              </button>
+              <AddToCartButton
+                className="btn btn-outline w-full min-h-11"
+                onClick={onAdded}
+                lines={lines}
+              >
+                Add to cart anyway — {money(total, currencyCode)}
+              </AddToCartButton>
+              <p className="text-center text-xs text-muted">
+                We couldn&apos;t save your proof just now. Retry, or add to cart
+                and we&apos;ll email your proof before printing.
+              </p>
+            </div>
           ) : (
             <AddToCartButton
               className="btn w-full min-h-11 bg-orange-500 text-white transition-colors hover:bg-orange-600"

@@ -118,7 +118,7 @@ export function Footer({
         <div className="ui-container flex flex-col items-center justify-between gap-3 py-6 text-xs text-white/50 sm:flex-row">
           <p>
             © {new Date().getFullYear()}{' '}
-            {header?.shop?.name || 'Berlin Houseware'}. All rights reserved.
+            {header?.shop?.name || 'Custom Bandanas'}. All rights reserved.
           </p>
           <p>Powered by Shopify Hydrogen · Carbon-neutral shipping</p>
         </div>

@@ -5,8 +5,8 @@ import {redirectIfHandleIsLocalized} from '~/lib/redirect';
 
 export const meta: Route.MetaFunction = ({data}) => {
   const article = data?.article;
-  if (!article) return [{title: 'Article — Berlin Houseware'}];
-  const title = article.seo?.title || `${article.title} — Berlin Houseware`;
+  if (!article) return [{title: 'Article — Custom Bandanas'}];
+  const title = article.seo?.title || `${article.title} — Custom Bandanas`;
   const description = (article.seo?.description || article.title)
     .replace(/\s+/g, ' ')
     .trim()
@@ -37,7 +37,7 @@ export const meta: Route.MetaFunction = ({data}) => {
         author: article.author?.name
           ? {'@type': 'Person', name: article.author.name}
           : undefined,
-        publisher: {'@type': 'Organization', name: 'Berlin Houseware'},
+        publisher: {'@type': 'Organization', name: 'Custom Bandanas'},
       },
     },
   ];
@@ -254,7 +254,7 @@ function SidebarCard({article}: {article: SidebarArticle}) {
           />
         ) : (
           <div className="grid h-full place-items-center text-xs font-bold lowercase text-brand-600">
-            berlinhouseware
+            custombandanas
           </div>
         )}
       </div>

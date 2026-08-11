@@ -21,14 +21,14 @@ export function ProductItem({
 }) {
   const variantUrl = useVariantUrl(product.handle);
   const image = product.featuredImage;
+  // The made-to-order product stays visible in the shop, but its card (and PDP,
+  // see routes/products.$handle) routes to the custom-print wizard instead of a
+  // generic product page.
+  const isCustom = product.handle === 'design-your-bandana';
+  const to = isCustom ? '/custom-print/design' : variantUrl;
 
   return (
-    <Link
-      className="group block"
-      key={product.id}
-      prefetch="intent"
-      to={variantUrl}
-    >
+    <Link className="group block" key={product.id} prefetch="intent" to={to}>
       <div className="relative aspect-square overflow-hidden rounded-2xl bg-mint">
         {image ? (
           <Image
@@ -39,6 +39,18 @@ export function ProductItem({
             sizes="(min-width: 45em) 400px, 50vw"
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
+        ) : isCustom ? (
+          // The made-to-order product has no Shopify image — use a bundled
+          // mosaic, inset with padding on the mint tile so it reads as a framed
+          // "design your own" card that balances with the product photos.
+          <div className="h-full w-full p-3">
+            <img
+              src="/custom-print-mosaic.avif"
+              alt="Design your custom bandana"
+              loading={loading}
+              className="h-full w-full rounded-lg object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+          </div>
         ) : (
           <div className="grid h-full place-items-center text-brand-600">
             <span className="text-sm font-bold lowercase">custombandanas</span>

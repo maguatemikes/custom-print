@@ -8,11 +8,11 @@ import {redirectIfHandleIsLocalized} from '~/lib/redirect';
 export const meta: Route.MetaFunction = ({data}) => {
   const blogTitle = data?.blog?.title;
   const title = blogTitle
-    ? `${blogTitle} — Berlin Houseware`
-    : 'Blog — Berlin Houseware';
+    ? `${blogTitle} — Custom Bandanas`
+    : 'Blog — Custom Bandanas';
   const description = blogTitle
-    ? `${blogTitle} — stories and guides from Berlin Houseware on homeware, consignment, and living with less.`
-    : 'Stories and guides from Berlin Houseware.';
+    ? `${blogTitle} — guides and inspiration from Custom Bandanas on custom bandana printing, design, and bulk ordering.`
+    : 'Stories and guides from Custom Bandanas.';
   return [
     {title},
     {name: 'description', content: description},
@@ -154,7 +154,7 @@ function ArticleItem({
           />
         ) : (
           <div className="grid h-full place-items-center text-brand-600">
-            <span className="text-sm font-bold lowercase">berlinhouseware</span>
+            <span className="text-sm font-bold lowercase">custombandanas</span>
           </div>
         )}
       </div>

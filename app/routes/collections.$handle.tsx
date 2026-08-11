@@ -17,11 +17,11 @@ import {siteOrigin} from '~/lib/seo';
 export const meta: Route.MetaFunction = ({data, matches}) => {
   const collection = data?.collection;
   const title = collection
-    ? `${collection.title} — Berlin Houseware`
-    : 'Collection — Berlin Houseware';
+    ? `${collection.title} — Custom Bandanas`
+    : 'Collection — Custom Bandanas';
   const description = (
     collection?.description ||
-    `Shop the ${collection?.title ?? ''} collection at Berlin Houseware — new & pre-loved homeware.`
+    `Shop the ${collection?.title ?? ''} collection at Custom Bandanas — custom-printed bandanas & merch, made to order with bulk & wholesale pricing.`
   )
     .replace(/\s+/g, ' ')
     .trim()

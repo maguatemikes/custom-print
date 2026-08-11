@@ -36,6 +36,18 @@ export function hexToRgb(hex: string): [number, number, number] | null {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/**
+ * Parse a loosely-typed RGB string into [r,g,b]. Accepts "226, 59, 59",
+ * "226,59,59", "226 59 59", or "rgb(226, 59, 59)" — any 3 numbers in 0–255.
+ * Returns null if it can't (so partial typing doesn't fight the user).
+ */
+export function parseRgb(text: string): [number, number, number] | null {
+  const nums = (text.match(/\d{1,3}/g) ?? []).map(Number);
+  if (nums.length < 3) return null;
+  const rgb = nums.slice(0, 3) as [number, number, number];
+  return rgb.some((n) => n > 255) ? null : rgb;
+}
+
 export function rgbToHsv([r, g, b]: [
   number,
   number,
@@ -79,16 +91,24 @@ export function ColorSpectrum({
   const [s, setS] = useState(init[1]);
   const [v, setV] = useState(init[2]);
   const [hexText, setHexText] = useState(value);
+  // RGB is editable too (pure conversion, no API): a user can paste their own
+  // "r, g, b" and the spectrum jumps to it — the two-way twin of the hex box.
+  const [rgbText, setRgbText] = useState(() => {
+    const [ir, ig, ib] = hexToRgb(value) ?? [226, 59, 59];
+    return `${ir}, ${ig}, ${ib}`;
+  });
   const svRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
 
   const hex = rgbToHex(hsvToRgb(h, s, v));
+  const [r, g, b] = hexToRgb(hex) ?? [0, 0, 0];
 
-  // Report the chosen colour upward and keep the hex box in sync as the
+  // Report the chosen colour upward and keep the hex + rgb boxes in sync as the
   // field/slider move. (Runs on hex change only.)
   useEffect(() => {
     onChange(hex);
     setHexText(hex);
+    setRgbText(`${r}, ${g}, ${b}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hex]);
 
@@ -161,29 +181,59 @@ export function ColorSpectrum({
         </div>
       </div>
 
-      {/* Preview swatch + hex input, beside the spectrum */}
-      <div className="flex w-24 shrink-0 flex-col gap-2">
+      {/* Preview swatch + labelled hex / rgb, beside the spectrum */}
+      <div className="flex w-36 shrink-0 flex-col gap-2">
         <span
           className="h-16 w-full rounded-lg ring-1 ring-black/10"
           style={{background: hex}}
         />
-        <input
-          value={hexText}
-          onChange={(e) => {
-            const t = e.target.value;
-            setHexText(t);
-            const rgb = hexToRgb(t);
-            if (rgb) {
-              const [nh, ns, nv] = rgbToHsv(rgb);
-              setH(nh);
-              setS(ns);
-              setV(nv);
-            }
-          }}
-          aria-label="Hex colour value"
-          spellCheck={false}
-          className="h-9 w-full rounded-lg border border-black/15 px-2 text-center text-xs uppercase focus:border-brand-500 focus:outline-none"
-        />
+        {/* HEX — editable, label beside */}
+        <div className="flex items-center gap-1.5">
+          <span className="w-7 shrink-0 text-[10px] font-bold uppercase tracking-wide text-muted">
+            Hex
+          </span>
+          <input
+            value={hexText}
+            onChange={(e) => {
+              const t = e.target.value;
+              setHexText(t);
+              const rgb = hexToRgb(t);
+              if (rgb) {
+                const [nh, ns, nv] = rgbToHsv(rgb);
+                setH(nh);
+                setS(ns);
+                setV(nv);
+              }
+            }}
+            aria-label="Hex colour value"
+            spellCheck={false}
+            className="h-9 min-w-0 flex-1 rounded-lg border border-black/15 px-1 text-center text-xs uppercase focus:border-brand-500 focus:outline-none"
+          />
+        </div>
+        {/* RGB — editable (paste your own "r, g, b"), label beside */}
+        <div className="flex items-center gap-1.5">
+          <span className="w-7 shrink-0 text-[10px] font-bold uppercase tracking-wide text-muted">
+            Rgb
+          </span>
+          <input
+            value={rgbText}
+            onChange={(e) => {
+              const t = e.target.value;
+              setRgbText(t);
+              const rgb = parseRgb(t);
+              if (rgb) {
+                const [nh, ns, nv] = rgbToHsv(rgb);
+                setH(nh);
+                setS(ns);
+                setV(nv);
+              }
+            }}
+            aria-label="RGB colour value"
+            spellCheck={false}
+            inputMode="numeric"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-black/15 px-1 text-center text-[11px] tabular-nums focus:border-brand-500 focus:outline-none"
+          />
+        </div>
       </div>
     </div>
   );

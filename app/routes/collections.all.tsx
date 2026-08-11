@@ -14,9 +14,9 @@ import {GridPending} from '~/components/GridPending';
 import {siteOrigin} from '~/lib/seo';
 
 export const meta: Route.MetaFunction = ({matches}) => {
-  const title = 'Shop All — Berlin Houseware';
+  const title = 'Shop All — Custom Bandanas';
   const description =
-    'Browse everything at Berlin Houseware — new and verified pre-loved homeware. Filter by color, brand, and price to find your next piece.';
+    'Browse every custom-printed bandana and merch design at Custom Bandanas — made to order, proofed before print, with bulk & wholesale pricing. Filter by color and price.';
   const url = `${siteOrigin(matches)}/collections/all`;
   return [
     {title},

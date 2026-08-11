@@ -9,6 +9,8 @@
  * Server-only — never import into client code.
  */
 
+import {getAdminAccessToken} from './adminToken.server';
+
 const API_VERSION = '2025-04';
 
 type StagedTarget = {
@@ -46,9 +48,9 @@ export async function uploadToShopifyFiles(
   file: {filename: string; mimeType: string; bytes: Uint8Array},
 ): Promise<string> {
   const domain = env.PUBLIC_STORE_DOMAIN;
-  const token = env.PRIVATE_ADMIN_API_TOKEN;
   if (!domain) throw new Error('PUBLIC_STORE_DOMAIN is not set');
-  if (!token) throw new Error('PRIVATE_ADMIN_API_TOKEN is not set');
+  // Auto-minted/refreshed by the broker (falls back to the static token).
+  const token = await getAdminAccessToken(env);
 
   // 1. Ask Shopify for a staged upload target.
   const staged = await adminGraphql<{

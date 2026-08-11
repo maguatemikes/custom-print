@@ -167,7 +167,7 @@ function SearchResultsProducts({
                       ) : (
                         <div className="grid h-full place-items-center text-brand-600">
                           <span className="text-sm font-bold lowercase">
-                            berlinhouseware
+                            custombandanas
                           </span>
                         </div>
                       )}
@@ -177,7 +177,7 @@ function SearchResultsProducts({
                         {product.title}
                       </h4>
                       <p className="text-xs text-muted">
-                        {product.vendor || 'Berlin Houseware'}
+                        {product.vendor || 'Custom Bandanas'}
                       </p>
                       {price && (
                         <div className="mt-1 text-sm font-bold text-brand-700">

@@ -5,12 +5,12 @@ import {siteOrigin} from '~/lib/seo';
 /**
  * About Us — a designed, static brand page (not a Shopify CMS page). Lives at
  * /pages/about, which takes precedence over the generic pages.$handle route.
- * Leads with the new & curated side, then pre-loved / consignment, then values.
+ * Tells the custom-printing story: made-to-order, proof-before-print, bulk.
  */
 export const meta: Route.MetaFunction = ({matches}) => {
-  const title = 'About Us — Berlin Houseware';
+  const title = 'About Us — Custom Bandanas';
   const description =
-    'Berlin Houseware is a curated marketplace for new and verified pre-loved homeware — listed side by side. Meet the people bringing quality kitchen, dining, décor, and lighting to more homes, with less waste.';
+    'Custom Bandanas is the made-to-order custom printing shop from Wholesale For Everyone — full-color digital-printed bandanas and merch, proofed before we print, with bulk and wholesale pricing.';
   const url = `${siteOrigin(matches)}/pages/about`;
   return [
     {title},
@@ -30,7 +30,7 @@ export const meta: Route.MetaFunction = ({matches}) => {
         name: title,
         description,
         url,
-        publisher: {'@type': 'Organization', name: 'Berlin Houseware'},
+        publisher: {'@type': 'Organization', name: 'Custom Bandanas'},
       },
     },
   ];
@@ -59,16 +59,19 @@ function AboutHero() {
       <div className="ui-container relative py-20 md:py-28">
         <span className="eyebrow text-brand-400">Our story</span>
         <h1 className="mt-4 max-w-3xl text-5xl font-extrabold uppercase leading-[0.95] tracking-tight md:text-7xl">
-          Homeware worth <span className="text-brand-400">keeping.</span>
+          Custom printing, <span className="text-brand-400">made simple.</span>
         </h1>
         <p className="mt-6 max-w-xl text-lg text-white/70">
-          Berlin Houseware is a curated marketplace for new and verified
-          pre-loved homeware — listed side by side. Great new pieces and quality
-          second-hand finds, in one place, for people who care how their home
-          looks and where their things come from.
+          Custom Bandanas is the made-to-order print shop from Wholesale For
+          Everyone. Upload your design, pick your shape and colors, and we print
+          full-color bandanas and merch — proofed before anything goes on
+          fabric, with bulk and wholesale pricing.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link to="/collections/all" className="btn btn-brand">
+          <Link to="/custom-print/design" className="btn btn-brand">
+            Design your bandana
+          </Link>
+          <Link to="/collections/all" className="btn btn-ghost">
             Shop the collection
           </Link>
         </div>
@@ -84,28 +87,27 @@ function Intro() {
         <div>
           <span className="eyebrow text-brand-700">What we&apos;re about</span>
           <h2 className="mt-3 text-3xl font-extrabold uppercase tracking-tight md:text-4xl">
-            New and pre-loved, side by side
+            Your design, digitally printed
           </h2>
         </div>
         <div className="space-y-4 text-muted">
           <p>
-            We started Berlin Houseware on a simple idea: a beautiful home
-            shouldn&apos;t mean buying everything brand new — and buying
-            second-hand shouldn&apos;t feel like a compromise. So we built one
-            store for both.
+            We started Custom Bandanas on a simple idea: getting your own design
+            printed shouldn&apos;t take a sales rep, a minimum-order headache, or
+            a two-week wait. So we built a store where you design online and we
+            print to order.
           </p>
           <p>
-            Our new collection is <strong className="text-ink">curated</strong>,
-            not endless — kitchen and dining, décor, lighting, and the small
-            things that make a space feel finished. Alongside it, every
-            pre-loved piece is inspected and verified by our team, then listed
-            right next to the new arrivals. Same quality bar, same care, one
-            checkout.
+            Everything is{' '}
+            <strong className="text-ink">full-color digital printing</strong> —
+            gradients, photos, and fine logo detail land exactly as designed, with
+            no screen-count limits. Choose your shape, base color, and layout,
+            approve the proof, and we print only what you order.
           </p>
           <p>
-            The result is a place where you can furnish a shelf, a table, or a
-            whole room — mixing new and pre-loved freely — and know that every
-            piece earned its spot.
+            Because we&apos;re backed by Wholesale For Everyone, per-piece
+            pricing drops as your quantity climbs — whether you need a dozen for a
+            team or thousands for a brand launch.
           </p>
         </div>
       </div>
@@ -117,23 +119,23 @@ function Values() {
   const values = [
     {
       n: '01',
-      t: 'Curated, not endless',
-      d: 'We choose a tight edit of new homeware worth owning — quality and design over sheer volume.',
+      t: 'Proof before print',
+      d: 'We send a digital proof of your artwork on the product — nothing goes on fabric until you approve it.',
     },
     {
       n: '02',
-      t: 'Verified pre-loved',
-      d: 'Every second-hand piece is inspected and authenticated before it goes live beside our new goods.',
+      t: 'Full-color digital printing',
+      d: 'Digital printing captures every color and fine detail — gradients, photos, and logos — with no screen limits.',
     },
     {
       n: '03',
-      t: 'Fair for sellers',
-      d: 'Consignors keep up to 80% of the sale, with no listing fees — we handle photos, pricing, and shipping.',
+      t: 'Bulk & wholesale pricing',
+      d: 'Per-piece pricing drops as you order more — from a dozen to thousands — backed by Wholesale For Everyone.',
     },
     {
       n: '04',
-      t: 'Less waste',
-      d: 'Giving great pieces a second life keeps them out of landfill and in homes where they belong.',
+      t: 'Made to order',
+      d: 'Every piece is printed when you order it, so there is no deadstock and no overproduction.',
     },
   ];
   return (
@@ -174,21 +176,18 @@ function Sustainability() {
           <div>
             <span className="eyebrow text-brand-400">Better by design</span>
             <h2 className="mt-3 text-3xl font-extrabold uppercase leading-tight tracking-tight md:text-4xl">
-              Good for your home, and the planet
+              Printed on demand, not overproduced
             </h2>
           </div>
           <div className="space-y-4 text-white/80">
             <p>
-              Homeware has a long life in it — a well-made pot, lamp, or vase
-              can serve one home, then another, for decades. Every pre-loved
-              piece that sells here is one less thing manufactured, shipped, and
-              eventually thrown away.
+              Made-to-order printing means we only make what you order — no
+              warehouses of unsold stock, no deadstock headed to landfill. You
+              get exactly the run you need, and nothing extra gets made.
             </p>
             <p>
-              We ship carbon-neutral, keep packaging minimal, and give
-              consignors the option to donate unsold items to our sustainability
-              partners rather than send them to landfill. Small choices, made at
-              scale.
+              We ship carbon-neutral and keep packaging minimal. Small choices,
+              made at scale.
             </p>
           </div>
         </div>
@@ -201,17 +200,17 @@ function AboutCta() {
   return (
     <section className="bg-mint">
       <div className="ui-container flex flex-col items-center gap-6 py-16 text-center md:py-24">
-        <span className="eyebrow text-brand-700">Join us</span>
+        <span className="eyebrow text-brand-700">Start your project</span>
         <h2 className="max-w-2xl text-3xl font-extrabold uppercase leading-tight tracking-tight md:text-5xl">
-          Start your project
+          Bring your design
         </h2>
         <p className="max-w-xl text-muted">
-          Browse the catalog and bring your design — custom printed, made to
-          order, proofed before we print.
+          Custom printed, made to order, proofed before we print — with bulk and
+          wholesale pricing.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
-          <Link to="/collections/all" className="btn btn-dark">
-            Shop the collection
+          <Link to="/custom-print/design" className="btn btn-dark">
+            Design your bandana
           </Link>
         </div>
       </div>

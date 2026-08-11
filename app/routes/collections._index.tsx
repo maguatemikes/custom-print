@@ -3,6 +3,26 @@ import type {Route} from './+types/collections._index';
 import {getPaginationVariables, Image} from '@shopify/hydrogen';
 import type {CollectionFragment} from 'storefrontapi.generated';
 import {PaginatedResourceSection} from '~/components/PaginatedResourceSection';
+import {siteOrigin} from '~/lib/seo';
+
+export const meta: Route.MetaFunction = ({matches}) => {
+  const title = 'All Collections — Custom Bandanas';
+  const description =
+    'Browse every collection at Custom Bandanas — custom-printed bandanas and merch, made to order with bulk & wholesale pricing.';
+  const url = `${siteOrigin(matches)}/collections`;
+  return [
+    {title},
+    {name: 'description', content: description},
+    {tagName: 'link', rel: 'canonical', href: url},
+    {property: 'og:type', content: 'website'},
+    {property: 'og:title', content: title},
+    {property: 'og:description', content: description},
+    {property: 'og:url', content: url},
+    {name: 'twitter:card', content: 'summary_large_image'},
+    {name: 'twitter:title', content: title},
+    {name: 'twitter:description', content: description},
+  ];
+};
 
 export async function loader(args: Route.LoaderArgs) {
   // Start fetching non-critical data without blocking time to first byte

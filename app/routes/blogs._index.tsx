@@ -23,9 +23,9 @@ type JournalArticle = {
 };
 
 export const meta: Route.MetaFunction = ({matches}) => {
-  const title = 'Journal — Berlin Houseware';
+  const title = 'Journal — Custom Bandanas';
   const description =
-    'Stories, guides, and inspiration from Berlin Houseware on new and pre-loved homeware, consignment, and living beautifully with less.';
+    'Guides and inspiration from Custom Bandanas on custom bandana printing, design tips, digital printing, and ordering in bulk for teams, brands, and events.';
   return [
     {title},
     {name: 'description', content: description},
@@ -83,7 +83,7 @@ export default function Journal() {
         <div className="ui-container py-16 md:py-24">
           <span className="eyebrow text-brand-700">The Journal</span>
           <h1 className="mt-3 text-4xl font-extrabold uppercase leading-[1.05] tracking-tight md:text-6xl">
-            Stories from Berlin Houseware
+            Stories from Custom Bandanas
           </h1>
           <div className="mt-12">
             <EmptyState />
@@ -100,11 +100,11 @@ export default function Journal() {
         <div className="ui-container pb-6 pt-14 md:pt-20">
           <span className="eyebrow text-brand-700">The Journal</span>
           <h1 className="mt-3 max-w-3xl text-4xl font-extrabold uppercase leading-[1.05] tracking-tight md:text-6xl">
-            Stories from Berlin Houseware
+            Stories from Custom Bandanas
           </h1>
           <p className="mt-4 max-w-xl text-muted">
-            Guides, edits, and inspiration on new and pre-loved homeware,
-            consignment, and living beautifully with less.
+            Guides and inspiration on custom bandana printing, design tips, and
+            ordering in bulk for teams, brands, schools, and events.
           </p>
         </div>
       </section>
@@ -179,7 +179,7 @@ function FeaturedPost({article}: {article: JournalArticle}) {
           />
         ) : (
           <div className="grid h-full place-items-center text-brand-600">
-            <span className="text-lg font-bold lowercase">berlinhouseware</span>
+            <span className="text-lg font-bold lowercase">custombandanas</span>
           </div>
         )}
       </div>
@@ -241,7 +241,7 @@ function PostCard({
           />
         ) : (
           <div className="grid h-full place-items-center text-brand-600">
-            <span className="text-sm font-bold lowercase">berlinhouseware</span>
+            <span className="text-sm font-bold lowercase">custombandanas</span>
           </div>
         )}
       </div>
@@ -315,8 +315,8 @@ function EmptyState() {
         Coming soon
       </h2>
       <p className="mt-3 text-sm text-muted">
-        We&apos;re writing our first stories. In the meantime, explore the
-        collection of new and pre-loved homeware.
+        We&apos;re writing our first stories. In the meantime, explore our
+        custom-printed bandanas and merch.
       </p>
       <Link to="/collections/all" className="btn btn-dark mt-8">
         Shop the collection

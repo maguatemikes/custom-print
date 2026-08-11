@@ -6,7 +6,7 @@ import {CartMain} from '~/components/CartMain';
 
 export const meta: Route.MetaFunction = () => {
   return [
-    {title: 'Cart — Berlin Houseware'},
+    {title: 'Cart — Custom Bandanas'},
     {name: 'robots', content: 'noindex,nofollow'},
   ];
 };

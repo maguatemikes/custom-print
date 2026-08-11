@@ -94,7 +94,7 @@ export default function AccountProfile() {
   return (
     <AccountCard icon={<IconUser />} title="Profile">
       <p className="mb-5 text-sm text-muted">
-        Update the name on your Berlin Houseware account.
+        Update the name on your Custom Bandanas account.
       </p>
 
       <Form method="PUT">

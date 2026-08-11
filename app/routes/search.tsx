@@ -17,9 +17,10 @@ export const meta: Route.MetaFunction = ({location}) => {
   return [
     {
       title: term
-        ? `Search: ${term} — Berlin Houseware`
-        : 'Search — Berlin Houseware',
+        ? `Search: ${term} — Custom Bandanas`
+        : 'Search — Custom Bandanas',
     },
+    {name: 'robots', content: 'noindex,follow'},
   ];
 };
 

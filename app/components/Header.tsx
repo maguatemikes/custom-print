@@ -53,6 +53,11 @@ function buildNav(
       to: '/collections/all',
       children: categories.length ? categories : undefined,
     },
+    {
+      // Leads to the made-to-order design wizard.
+      title: 'Custom Digital Print',
+      to: '/custom-print/design',
+    },
   ];
 }
 
@@ -75,7 +80,7 @@ export function Header({header, customer, cart}: HeaderProps) {
               prefetch="intent"
               to="/"
               end
-              aria-label={`${shop.name || 'Berlin Houseware'} home`}
+              aria-label={`${shop.name || 'Custom Bandanas'} home`}
             >
               <Logo />
             </NavLink>
@@ -234,9 +239,7 @@ function NavTop({item}: {item: NavItem}) {
         className={({isActive}) =>
           `relative flex items-center px-1 text-[15px] font-medium transition-colors ${
             item.accent ? 'text-brand-600' : 'text-ink'
-          } after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:origin-center after:scale-x-0 after:bg-brand-500 after:transition-transform group-hover:after:scale-x-100 ${
-            isActive ? 'after:scale-x-100' : ''
-          }`
+          } after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:origin-center after:scale-x-0 after:bg-brand-500 after:transition-transform group-hover:after:scale-x-100`
         }
       >
         {item.title}

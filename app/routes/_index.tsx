@@ -13,7 +13,7 @@ const HERO_IMAGE =
   'https://cdn.shopify.com/s/files/1/0716/2609/6792/files/hero.png';
 
 export const meta: Route.MetaFunction = ({matches}) => {
-  const title = 'Berlin Houseware — Custom Printed, Made to Order';
+  const title = 'Custom Bandanas — Custom Printed, Made to Order';
   const description =
     'Custom-printed bandanas, caps, and merch made to order — your design, proofed before we print, with bulk & wholesale pricing.';
   const origin = siteOrigin(matches);
@@ -23,7 +23,7 @@ export const meta: Route.MetaFunction = ({matches}) => {
     {name: 'description', content: description},
     {tagName: 'link', rel: 'canonical', href: url},
     {property: 'og:type', content: 'website'},
-    {property: 'og:site_name', content: 'Berlin Houseware'},
+    {property: 'og:site_name', content: 'Custom Bandanas'},
     {property: 'og:title', content: title},
     {property: 'og:description', content: description},
     {property: 'og:url', content: url},
@@ -36,7 +36,7 @@ export const meta: Route.MetaFunction = ({matches}) => {
       'script:ld+json': {
         '@context': 'https://schema.org',
         '@type': 'Organization',
-        name: 'Berlin Houseware',
+        name: 'Custom Bandanas',
         url,
         description,
       },
@@ -45,7 +45,7 @@ export const meta: Route.MetaFunction = ({matches}) => {
       'script:ld+json': {
         '@context': 'https://schema.org',
         '@type': 'WebSite',
-        name: 'Berlin Houseware',
+        name: 'Custom Bandanas',
         url,
         potentialAction: {
           '@type': 'SearchAction',

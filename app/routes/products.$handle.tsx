@@ -1,5 +1,5 @@
 import {Suspense, useEffect, useRef, useState} from 'react';
-import {Await, useLoaderData} from 'react-router';
+import {Await, useLoaderData, redirect} from 'react-router';
 import type {Route} from './+types/products.$handle';
 import {
   getSelectedProductOptions,
@@ -29,15 +29,15 @@ import {siteOrigin} from '~/lib/seo';
 export const meta: Route.MetaFunction = ({data, matches}) => {
   const product = data?.product;
   if (!product) {
-    return [{title: 'Product | Berlin Houseware'}];
+    return [{title: 'Product | Custom Bandanas'}];
   }
 
   const variant = product.selectedOrFirstAvailableVariant;
-  const title = product.seo?.title || `${product.title} | Berlin Houseware`;
+  const title = product.seo?.title || `${product.title} | Custom Bandanas`;
   const description = (
     product.seo?.description ||
     product.description ||
-    `Shop ${product.title} at Berlin Houseware — new & pre-loved streetwear.`
+    `Shop ${product.title} at Custom Bandanas — custom-printed and made to order, with bulk & wholesale pricing.`
   )
     .replace(/\s+/g, ' ')
     .trim()
@@ -65,7 +65,7 @@ export const meta: Route.MetaFunction = ({data, matches}) => {
         name: product.title,
         description,
         image: image ? [image] : undefined,
-        brand: {'@type': 'Brand', name: product.vendor || 'Berlin Houseware'},
+        brand: {'@type': 'Brand', name: product.vendor || 'Custom Bandanas'},
         sku: variant?.sku || undefined,
         offers: variant?.price
           ? {
@@ -84,6 +84,13 @@ export const meta: Route.MetaFunction = ({data, matches}) => {
 };
 
 export async function loader(args: Route.LoaderArgs) {
+  // The made-to-order "Design your bandana" product has no real PDP — it's a
+  // variant/price carrier for checkout. Any hit on its product page (shop card,
+  // direct link, search) goes to the custom-print wizard instead.
+  if (args.params.handle === 'design-your-bandana') {
+    return redirect('/custom-print/design');
+  }
+
   // Start fetching non-critical data without blocking time to first byte
   const deferredData = loadDeferredData(args);
 
@@ -241,7 +248,7 @@ export default function Product() {
             {/* Brand under the title — the vendor's only home (the eyebrow is
               seller-only now). Hidden when it's just the store-default vendor. */}
             {product.vendor &&
-              !product.vendor.toLowerCase().includes('berlinhouseware') && (
+              !product.vendor.toLowerCase().includes('custombandanas') && (
                 <p className="mt-1 text-sm text-muted">
                   Brand: {product.vendor}
                 </p>

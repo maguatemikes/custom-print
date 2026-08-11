@@ -69,7 +69,7 @@ export function ProductGallery({
   if (!images.length) {
     return (
       <div className="grid aspect-square w-full place-items-center rounded-3xl bg-mint text-brand-600">
-        <span className="text-sm font-bold lowercase">berlinhouseware</span>
+        <span className="text-sm font-bold lowercase">custombandanas</span>
       </div>
     );
   }

@@ -17,6 +17,12 @@ import {
   AccountSkeleton,
 } from '~/components/AccountUI';
 
+// Account is private — keep every /account/* page out of search indexes.
+export const meta: Route.MetaFunction = () => [
+  {title: 'Account — Custom Bandanas'},
+  {name: 'robots', content: 'noindex,nofollow'},
+];
+
 // Reuse the already-loaded customer profile on plain tab navigations; only
 // re-fetch it after a mutation (address / profile change). This removes one
 // uncached Customer Account API round-trip per tab click, so switching tabs
