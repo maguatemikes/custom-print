@@ -43,6 +43,11 @@ export function CartLineItem({
   const designOutput = line.attributes?.find(
     (a) => a.key === 'Design output',
   )?.value;
+  // A blank (no-print) bandana has no proof image — fall back to its solid base
+  // colour so the cart shows the actual product, not an empty tile.
+  const baseColour = line.attributes?.find(
+    (a) => a.key === 'Base colour',
+  )?.value;
 
   return (
     <li
@@ -79,6 +84,12 @@ export function CartLineItem({
               width={80}
               loading="lazy"
               className="h-20 w-20 rounded-xl bg-mint object-cover"
+            />
+          ) : baseColour ? (
+            <div
+              className="h-20 w-20 rounded-xl ring-1 ring-inset ring-black/10"
+              style={{backgroundColor: baseColour}}
+              aria-label={`${product.title} — ${baseColour}`}
             />
           ) : (
             <div className="h-20 w-20 rounded-xl bg-mint" />

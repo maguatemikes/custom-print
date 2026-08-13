@@ -90,7 +90,7 @@ export async function uploadToShopifyFiles(
   for (const p of target.parameters) form.append(p.name, p.value);
   form.append(
     'file',
-    new Blob([file.bytes], {type: file.mimeType}),
+    new Blob([file.bytes as BlobPart], {type: file.mimeType}),
     file.filename,
   );
   const upload = await fetch(target.url, {method: 'POST', body: form});
