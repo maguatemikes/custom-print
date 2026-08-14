@@ -19,6 +19,7 @@ import {ProductPrice} from '~/components/ProductPrice';
 import {ProductGallery} from '~/components/ProductGallery';
 import {ProductForm} from '~/components/ProductForm';
 import {AddToCartButton} from '~/components/AddToCartButton';
+import {MIN_ORDER_QTY} from '~/lib/cart';
 import {ColorSpectrum} from '~/components/ColorSpectrum';
 import {SelectMenu} from '~/components/SelectMenu';
 import {useAside} from '~/components/Aside';
@@ -181,7 +182,7 @@ export default function Product() {
   const {title, descriptionHtml} = product;
 
   // Quantity is shared so the displayed price reflects the selected amount.
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(MIN_ORDER_QTY);
   // Buy the design as-shown, or open the personalize configurator.
   const [mode, setMode] = useState<'stock' | 'custom'>('stock');
 
@@ -864,8 +865,8 @@ function PersonalizeSection({
           <button
             type="button"
             aria-label="Decrease quantity"
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-            disabled={quantity <= 1}
+            onClick={() => setQuantity((q) => Math.max(MIN_ORDER_QTY, q - 1))}
+            disabled={quantity <= MIN_ORDER_QTY}
             className="grid h-full w-11 place-items-center rounded-full text-ink hover:bg-mint disabled:opacity-30"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4">

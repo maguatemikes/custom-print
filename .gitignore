@@ -15,3 +15,6 @@ tsconfig.tsbuildinfo
 
 # Nested Shopify app (discount function) — its own repo, don't track here
 /custom-print-discount
+
+# Local safety backups (not versioned)
+.backups/

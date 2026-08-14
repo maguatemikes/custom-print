@@ -1,5 +1,12 @@
 import {useEffect, useRef, useState} from 'react';
 
+// The native EyeDropper API (Chromium only) isn't in TS's DOM lib yet.
+declare global {
+  interface Window {
+    EyeDropper?: new () => {open: () => Promise<{sRGBHex: string}>};
+  }
+}
+
 /* --- colour maths for the full-spectrum picker --- */
 export function hsvToRgb(
   h: number,
@@ -36,18 +43,6 @@ export function hexToRgb(hex: string): [number, number, number] | null {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/**
- * Parse a loosely-typed RGB string into [r,g,b]. Accepts "226, 59, 59",
- * "226,59,59", "226 59 59", or "rgb(226, 59, 59)" — any 3 numbers in 0–255.
- * Returns null if it can't (so partial typing doesn't fight the user).
- */
-export function parseRgb(text: string): [number, number, number] | null {
-  const nums = (text.match(/\d{1,3}/g) ?? []).map(Number);
-  if (nums.length < 3) return null;
-  const rgb = nums.slice(0, 3) as [number, number, number];
-  return rgb.some((n) => n > 255) ? null : rgb;
-}
-
 export function rgbToHsv([r, g, b]: [
   number,
   number,
@@ -70,11 +65,15 @@ export function rgbToHsv([r, g, b]: [
   return [h, max ? d / max : 0, max];
 }
 
+type Model = 'hex' | 'rgb' | 'cmyk' | 'pantone';
+
 /**
- * Full-spectrum colour picker — a saturation/value field + hue slider + hex
- * box, styled to the design system (no native popup). Drag the field or slider
- * (pointer events) or type a hex; reports the chosen colour up via
- * onChange(hex). Self-contained: owns its own h/s/v state.
+ * Full-spectrum colour picker — a full-width saturation/value field with a
+ * vertical hue slider beside it, and a segmented Hex / RGB / CMYK / Pantone
+ * input row (with an inline eyedropper) below; CMYK + Pantone are coming soon.
+ * No alpha: the base colour is opaque fabric.
+ * Styled to the design system (no native popup); reports up via onChange(hex).
+ * Self-contained: owns its own h/s/v state.
  *
  * Shared by the PDP "Personalize me" flow and the /custom-print/design wizard
  * so both use an identical control.
@@ -90,41 +89,56 @@ export function ColorSpectrum({
   const [h, setH] = useState(init[0]);
   const [s, setS] = useState(init[1]);
   const [v, setV] = useState(init[2]);
+  const [model, setModel] = useState<Model>('hex');
   const [hexText, setHexText] = useState(value);
-  // RGB is editable too (pure conversion, no API): a user can paste their own
-  // "r, g, b" and the spectrum jumps to it — the two-way twin of the hex box.
-  const [rgbText, setRgbText] = useState(() => {
-    const [ir, ig, ib] = hexToRgb(value) ?? [226, 59, 59];
-    return `${ir}, ${ig}, ${ib}`;
-  });
   const svRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
 
-  const hex = rgbToHex(hsvToRgb(h, s, v));
-  const [r, g, b] = hexToRgb(hex) ?? [0, 0, 0];
+  // Native eyedropper (Chromium only) — detected after mount so SSR and the
+  // first client render agree (window is absent on the server).
+  const [eyeSupported, setEyeSupported] = useState(false);
+  useEffect(() => {
+    setEyeSupported(typeof window !== 'undefined' && 'EyeDropper' in window);
+  }, []);
 
-  // Report the chosen colour upward and keep the hex + rgb boxes in sync as the
-  // field/slider move. (Runs on hex change only.)
+  const hex = rgbToHex(hsvToRgb(h, s, v));
+  const rgb = hexToRgb(hex) ?? [0, 0, 0];
+  const [r, g, b] = rgb;
+
+  // Report the chosen colour upward and keep the hex box in sync as the
+  // field / slider move. (Runs on hex change only.)
   useEffect(() => {
     onChange(hex);
     setHexText(hex);
-    setRgbText(`${r}, ${g}, ${b}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hex]);
 
-  const dragSV = (clientX: number, clientY: number) => {
-    const r = svRef.current?.getBoundingClientRect();
-    if (!r) return;
-    const x = Math.min(Math.max(clientX - r.left, 0), r.width);
-    const y = Math.min(Math.max(clientY - r.top, 0), r.height);
-    setS(r.width ? x / r.width : 0);
-    setV(r.height ? 1 - y / r.height : 0);
+  // The single apply-colour path every input funnels through.
+  const applyRgb = ([nr, ng, nb]: [number, number, number]) => {
+    const [nh, ns, nv] = rgbToHsv([nr, ng, nb]);
+    setH(nh);
+    setS(ns);
+    setV(nv);
   };
-  const dragHue = (clientX: number) => {
-    const r = hueRef.current?.getBoundingClientRect();
-    if (!r) return;
-    const x = Math.min(Math.max(clientX - r.left, 0), r.width);
-    setH(r.width ? (x / r.width) * 360 : 0);
+  const applyHex = (hx: string) => {
+    const parsed = hexToRgb(hx);
+    if (parsed) applyRgb(parsed);
+  };
+
+  const dragSV = (clientX: number, clientY: number) => {
+    const rect = svRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+    const y = Math.min(Math.max(clientY - rect.top, 0), rect.height);
+    setS(rect.width ? x / rect.width : 0);
+    setV(rect.height ? 1 - y / rect.height : 0);
+  };
+  // Vertical hue: drag on the Y axis (top = red 0°, bottom = red 360°).
+  const dragHue = (clientY: number) => {
+    const rect = hueRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const y = Math.min(Math.max(clientY - rect.top, 0), rect.height);
+    setH(rect.height ? (y / rect.height) * 360 : 0);
   };
 
   const startDrag =
@@ -140,100 +154,173 @@ export function ColorSpectrum({
       window.addEventListener('pointerup', up);
     };
 
+  const pickWithEyeDropper = async () => {
+    if (!window.EyeDropper) return;
+    try {
+      const {sRGBHex} = await new window.EyeDropper().open();
+      applyHex(sRGBHex);
+    } catch {
+      /* user cancelled (AbortError) — leave the colour unchanged */
+    }
+  };
+
+  // Compact labelled number box (R / G / B) for the numeric models.
+  const NumBox = ({
+    label,
+    value: val,
+    max,
+    onCommit,
+    suffix,
+  }: {
+    label: string;
+    value: number;
+    max: number;
+    onCommit: (n: number) => void;
+    suffix?: string;
+  }) => (
+    <label className="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-[#f5f5f5] px-2.5 transition focus-within:ring-2 focus-within:ring-brand-500/30">
+      <span className="shrink-0 text-xs font-semibold leading-none text-muted">
+        {label}
+      </span>
+      <input
+        value={Math.round(val)}
+        inputMode="numeric"
+        onChange={(e) => {
+          const n = Number(e.target.value.replace(/[^\d]/g, ''));
+          if (Number.isFinite(n)) onCommit(Math.min(max, Math.max(0, n)));
+        }}
+        aria-label={label}
+        className="m-0 min-w-0 flex-1 border-0 bg-transparent p-0 text-center text-sm leading-none tabular-nums text-ink focus:outline-none focus:ring-0"
+      />
+      {suffix ? (
+        <span className="shrink-0 text-xs leading-none text-muted">{suffix}</span>
+      ) : null}
+    </label>
+  );
+
+  const tabBtn = (m: Model) => (
+    <button
+      key={m}
+      type="button"
+      aria-pressed={model === m}
+      onClick={() => setModel(m)}
+      className={`h-8 rounded-lg text-xs font-bold uppercase tracking-wide transition ${
+        model === m
+          ? 'bg-white text-ink shadow-sm'
+          : 'text-muted hover:text-ink'
+      }`}
+    >
+      {m}
+    </button>
+  );
+
   return (
-    <div className="flex max-w-md gap-3">
-      {/* Spectrum: saturation/value field + hue slider */}
-      <div className="min-w-0 flex-1">
+    <div className="w-full">
+      {/* Saturation/value field + vertical hue slider */}
+      <div className="flex gap-3">
         <div
           ref={svRef}
           onPointerDown={startDrag(dragSV)}
-          className="relative h-40 w-full cursor-crosshair touch-none rounded-xl"
+          className="relative h-56 min-w-0 flex-1 cursor-crosshair touch-none rounded-xl"
           style={{
             background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent), hsl(${h}, 100%, 50%)`,
           }}
         >
           <span
             className="pointer-events-none absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
-            style={{
-              left: `${s * 100}%`,
-              top: `${(1 - v) * 100}%`,
-              background: hex,
-            }}
+            style={{left: `${s * 100}%`, top: `${(1 - v) * 100}%`, background: hex}}
           />
         </div>
 
         <div
           ref={hueRef}
-          onPointerDown={startDrag((x) => dragHue(x))}
-          className="relative mt-3 h-4 w-full cursor-pointer touch-none rounded-full"
+          onPointerDown={startDrag((x, y) => dragHue(y))}
+          className="relative w-5 shrink-0 cursor-pointer touch-none rounded-full"
           style={{
             background:
-              'linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)',
+              'linear-gradient(to bottom, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%)',
           }}
         >
+          {/* Handle insets by its own height so it stays inside the track. */}
           <span
-            className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+            className="pointer-events-none absolute left-1/2 h-5 w-5 -translate-x-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
             style={{
-              left: `${(h / 360) * 100}%`,
+              top: `calc((100% - 20px) * ${h / 360})`,
               background: `hsl(${h}, 100%, 50%)`,
             }}
           />
         </div>
       </div>
 
-      {/* Preview swatch + labelled hex / rgb, beside the spectrum */}
-      <div className="flex w-36 shrink-0 flex-col gap-2">
-        <span
-          className="h-16 w-full rounded-lg ring-1 ring-black/10"
-          style={{background: hex}}
-        />
-        {/* HEX — editable, label beside */}
-        <div className="flex items-center gap-1.5">
-          <span className="w-7 shrink-0 text-[10px] font-bold uppercase tracking-wide text-muted">
-            Hex
-          </span>
+      {/* Model tabs — CMYK + Pantone are clickable but open a "coming soon"
+          panel below (matching not built yet). */}
+      <div className="mt-3 grid grid-cols-4 gap-1 rounded-xl bg-black/[0.05] p-1">
+        {(['hex', 'rgb', 'cmyk', 'pantone'] as const).map(tabBtn)}
+      </div>
+
+      {/* Eyedropper + inputs for the selected model */}
+      <div className="mt-2 flex items-center gap-2">
+        {eyeSupported ? (
+          <button
+            type="button"
+            onClick={pickWithEyeDropper}
+            aria-label="Pick a colour from the screen"
+            title="Eyedropper — pick a colour from the screen"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#f5f5f5] text-ink transition hover:bg-black/[0.06]"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m2 22 1-1h3l9-9" />
+              <path d="M3 21v-3l9-9" />
+              <path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z" />
+            </svg>
+          </button>
+        ) : null}
+
+        {model === 'hex' ? (
           <input
             value={hexText}
             onChange={(e) => {
               const t = e.target.value;
               setHexText(t);
-              const rgb = hexToRgb(t);
-              if (rgb) {
-                const [nh, ns, nv] = rgbToHsv(rgb);
-                setH(nh);
-                setS(ns);
-                setV(nv);
-              }
+              applyHex(t);
             }}
             aria-label="Hex colour value"
             spellCheck={false}
-            className="h-9 min-w-0 flex-1 rounded-lg border border-black/15 px-1 text-center text-xs uppercase focus:border-brand-500 focus:outline-none"
+            className="m-0 h-9 min-w-0 flex-1 rounded-lg bg-[#f5f5f5] px-3 text-sm uppercase text-ink focus:outline-none focus:ring-2 focus:ring-brand-500/30"
           />
-        </div>
-        {/* RGB — editable (paste your own "r, g, b"), label beside */}
-        <div className="flex items-center gap-1.5">
-          <span className="w-7 shrink-0 text-[10px] font-bold uppercase tracking-wide text-muted">
-            Rgb
-          </span>
-          <input
-            value={rgbText}
-            onChange={(e) => {
-              const t = e.target.value;
-              setRgbText(t);
-              const rgb = parseRgb(t);
-              if (rgb) {
-                const [nh, ns, nv] = rgbToHsv(rgb);
-                setH(nh);
-                setS(ns);
-                setV(nv);
-              }
-            }}
-            aria-label="RGB colour value"
-            spellCheck={false}
-            inputMode="numeric"
-            className="h-9 min-w-0 flex-1 rounded-lg border border-black/15 px-1 text-center text-[11px] tabular-nums focus:border-brand-500 focus:outline-none"
-          />
-        </div>
+        ) : model === 'rgb' ? (
+          <div className="flex min-w-0 flex-1 gap-1.5">
+            <NumBox label="R" value={r} max={255} onCommit={(n) => applyRgb([n, g, b])} />
+            <NumBox label="G" value={g} max={255} onCommit={(n) => applyRgb([r, n, b])} />
+            <NumBox label="B" value={b} max={255} onCommit={(n) => applyRgb([r, g, n])} />
+          </div>
+        ) : (
+          <div className="flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#f5f5f5] text-xs font-semibold text-muted">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            {model === 'cmyk' ? 'CMYK' : 'Pantone'} matching — coming soon
+          </div>
+        )}
       </div>
     </div>
   );

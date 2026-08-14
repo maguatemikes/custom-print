@@ -7,6 +7,7 @@ import type {
 } from '@shopify/hydrogen/storefront-api-types';
 import {AddToCartButton} from './AddToCartButton';
 import {useAside} from './Aside';
+import {MIN_ORDER_QTY} from '~/lib/cart';
 import type {ProductFragment} from 'storefrontapi.generated';
 
 export function ProductForm({
@@ -134,8 +135,8 @@ export function ProductForm({
           <button
             type="button"
             aria-label="Decrease quantity"
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-            disabled={quantity <= 1}
+            onClick={() => setQuantity((q) => Math.max(MIN_ORDER_QTY, q - 1))}
+            disabled={quantity <= MIN_ORDER_QTY}
             className="grid h-full w-11 place-items-center rounded-full text-ink hover:bg-mint disabled:opacity-30"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4">

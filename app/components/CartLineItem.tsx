@@ -2,6 +2,7 @@ import type {CartLineUpdateInput} from '@shopify/hydrogen/storefront-api-types';
 import type {CartLayout, LineItemChildrenMap} from '~/components/CartMain';
 import {CartForm, Image, Money, type OptimisticCartLine} from '@shopify/hydrogen';
 import {useVariantUrl} from '~/lib/variants';
+import {MIN_ORDER_QTY} from '~/lib/cart';
 import {Link} from 'react-router';
 import {useAside} from './Aside';
 import type {CartApiQueryFragment} from 'storefrontapi.generated';
@@ -159,7 +160,7 @@ export function CartLineItem({
 function CartLineQuantity({line}: {line: CartLine}) {
   if (!line || typeof line?.quantity === 'undefined') return null;
   const {id: lineId, quantity, isOptimistic} = line;
-  const prevQuantity = Number(Math.max(0, quantity - 1).toFixed(0));
+  const prevQuantity = Number(Math.max(MIN_ORDER_QTY, quantity - 1).toFixed(0));
   const nextQuantity = Number((quantity + 1).toFixed(0));
 
   const btn =
@@ -171,7 +172,7 @@ function CartLineQuantity({line}: {line: CartLine}) {
         <button
           className={btn}
           aria-label="Decrease quantity"
-          disabled={quantity <= 1 || !!isOptimistic}
+          disabled={quantity <= MIN_ORDER_QTY || !!isOptimistic}
           name="decrease-quantity"
           value={prevQuantity}
         >

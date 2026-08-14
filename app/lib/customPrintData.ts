@@ -45,33 +45,57 @@ export const DEFAULT_SIZE: Record<string, string> = {
 
 export const MIN_QTY = 12;
 
-// The undiscounted single-unit price (qty 1–11) — the "you save vs" anchor.
-export const BASE_PRICE = 25.0;
+// Uniform Shopify list price every variant starts at — the "you save vs" anchor.
+// The volume discount reduces from this down to the per-piece tier price, so it
+// must match BASE in the tiered-pricing discount function.
+export const LIST_PRICE = 25.0;
 
-// "Buy more, save more" tiers — mirrors the Shopify tiered-discount function.
-// `label` is the band shown in the table; `each` is the per-piece price.
+// "Buy more, save more" tiers — the all-inclusive per-piece price by quantity
+// band (price = the highest break ≤ qty). Shape-specific price sheets: squares
+// and triangles differ. Mirrors the Shopify tiered-discount function. Discount %
+// is derived from the 12-qty anchor at display time, so it isn't stored here.
 export type Tier = {
   min: number;
   max: number | null;
   label: string;
-  discount: string;
   each: number;
 };
-export const TIERS: Tier[] = [
-  {min: 1, max: 11, label: '11', discount: '—', each: 25.0},
-  {min: 12, max: 23, label: '12 – 23', discount: '23.08%', each: 19.23},
-  {min: 24, max: 35, label: '24 – 35', discount: '42.4%', each: 14.4},
-  {min: 36, max: 47, label: '36 – 47', discount: '48.72%', each: 12.82},
-  {min: 48, max: 59, label: '48 – 59', discount: '55.92%', each: 11.02},
-  {min: 60, max: 71, label: '60 – 71', discount: '61.52%', each: 9.62},
-  {min: 72, max: 83, label: '72 – 83', discount: '63.16%', each: 9.21},
-  {min: 84, max: 143, label: '84 – 143', discount: '62.88%', each: 9.28},
-  {min: 144, max: 299, label: '144 – 299', discount: '74.68%', each: 6.33},
-  {min: 300, max: 599, label: '300 – 599', discount: '78.32%', each: 5.42},
-  {min: 600, max: 1199, label: '600 – 1,199', discount: '84.96%', each: 3.76},
-  {min: 1200, max: 3599, label: '1,200 – 3,599', discount: '86.36%', each: 3.41},
-  {min: 3600, max: null, label: '3,600+', discount: '88.6%', each: 2.85},
+
+// 22×22 square (digital print). Applied to every square size for now.
+export const SQUARE_TIERS: Tier[] = [
+  {min: 12, max: 23, label: '12 – 23', each: 13.8},
+  {min: 24, max: 35, label: '24 – 35', each: 10.64},
+  {min: 36, max: 47, label: '36 – 47', each: 8.81},
+  {min: 48, max: 59, label: '48 – 59', each: 6.77},
+  {min: 60, max: 71, label: '60 – 71', each: 5.73},
+  {min: 72, max: 107, label: '72 – 107', each: 4.34},
+  {min: 108, max: 143, label: '108 – 143', each: 3.92},
+  {min: 144, max: 299, label: '144 – 299', each: 3.65},
+  {min: 300, max: 599, label: '300 – 599', each: 3.22},
+  {min: 600, max: 1199, label: '600 – 1,199', each: 2.87},
+  {min: 1200, max: null, label: '1,200+', each: 2.54},
 ];
+
+// 22×30×22 triangle. Applied to every triangle size for now.
+export const TRIANGLE_TIERS: Tier[] = [
+  {min: 12, max: 23, label: '12 – 23', each: 9.8},
+  {min: 24, max: 35, label: '24 – 35', each: 6.81},
+  {min: 36, max: 47, label: '36 – 47', each: 5.92},
+  {min: 48, max: 59, label: '48 – 59', each: 5.27},
+  {min: 60, max: 71, label: '60 – 71', each: 4.85},
+  {min: 72, max: 107, label: '72 – 107', each: 4.34},
+  {min: 108, max: 143, label: '108 – 143', each: 3.91},
+  {min: 144, max: 299, label: '144 – 299', each: 3.46},
+  {min: 300, max: 599, label: '300 – 599', each: 2.98},
+  {min: 600, max: 1199, label: '600 – 1,199', each: 2.76},
+  {min: 1200, max: null, label: '1,200+', each: 2.48},
+];
+
+/** The price sheet for a shape (triangle vs square). */
+export function tiersFor(shape: string): Tier[] {
+  return shape === 'Triangle' ? TRIANGLE_TIERS : SQUARE_TIERS;
+}
+
 
 export const INTENTS: Array<{value: string; label: string}> = [
   {value: 'ready', label: 'Yes — my design is ready to go'},
@@ -230,20 +254,21 @@ export function patternsFor(shape: string) {
 /* Pricing + formatting helpers (pure)                                        */
 /* -------------------------------------------------------------------------- */
 
-/** The tier whose band contains this quantity. */
-export function tierFor(qty: number): Tier {
+/** The tier whose band contains this quantity, for the shape's price sheet. */
+export function tierFor(qty: number, shape = 'Square'): Tier {
+  const tiers = tiersFor(shape);
   return (
-    TIERS.find((t) => qty >= t.min && (t.max === null || qty <= t.max)) ??
-    TIERS[TIERS.length - 1]
+    tiers.find((t) => qty >= t.min && (t.max === null || qty <= t.max)) ??
+    tiers[tiers.length - 1]
   );
 }
-/** Per-piece price for a quantity, from the tier table. */
-export function unitPriceFor(qty: number): number {
-  return tierFor(qty).each;
+/** Per-piece price for a quantity, from the shape's tier table. */
+export function unitPriceFor(qty: number, shape = 'Square'): number {
+  return tierFor(qty, shape).each;
 }
 /** Next quantity band above the current qty (for the "order X+ to drop" hint). */
-export function nextTier(qty: number) {
-  return TIERS.find((t) => t.min > qty);
+export function nextTier(qty: number, shape = 'Square') {
+  return tiersFor(shape).find((t) => t.min > qty);
 }
 export function money(n: number, cc: string) {
   return new Intl.NumberFormat('en-US', {
