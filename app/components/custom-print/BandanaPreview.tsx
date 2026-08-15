@@ -1,6 +1,7 @@
+import {memo} from 'react';
 import type {LogoMark} from '~/lib/customPrintData';
 
-export function BandanaPreview({
+function BandanaPreviewImpl({
   shape,
   baseColor,
   logoPreview,
@@ -326,3 +327,13 @@ export function BandanaPreview({
     </div>
   );
 }
+
+/**
+ * Memoised: the wizard re-renders on lots of state the preview doesn't draw
+ * (email keystrokes, quantity, material, size, upload/proof status…). memo's
+ * shallow prop check skips a full SVG re-layout unless a real preview prop
+ * (colour, logo, pattern, rotation, spacing, side) actually changes. Every prop
+ * passed in is a primitive, a module-constant array (`marks`), or a stable
+ * callback (`onFlip` = a setState setter), so the comparison bites.
+ */
+export const BandanaPreview = memo(BandanaPreviewImpl);

@@ -1,0 +1,76 @@
+{%- comment -%}
+  ============================================================================
+  GUARDED default line-item property blocks — Shopify Order confirmation email.
+
+  PROBLEM: Shopify's default notification template renders line-item properties
+  in a `{% if line.properties.size > 0 %}` loop (class order-list__item-property).
+  Our custom "Design details" card (docs/notifications/order-confirmation-design-details.liquid)
+  ALSO renders them for custom-print lines — so they'd show TWICE.
+
+  FIX: guard the DEFAULT loop so it SKIPS custom-print lines (detected by the
+  `Custom order` marker the wizard attaches). Custom-print lines then show ONLY
+  via our pretty card; PDP "Personalize" items and any other products with
+  properties still render through the default loop unchanged.
+
+  The inner markup is byte-for-byte identical to Shopify's default — the design
+  stays 1:1. Only the is_custom_print guard is added.
+
+  WHERE: search the notification template for `properties.size > 0` (~4 hits).
+  Use the `line` variant where the loop reads `line.properties`, and the
+  `component` variant where it reads `component.properties`.
+  ============================================================================
+{%- endcomment -%}
+
+{%- comment -%} ===== Variant 1: line.properties (use for the 3 `line` blocks) ===== {%- endcomment -%}
+{% if line.properties.size > 0 %}
+  {%- assign is_custom_print = false -%}
+  {%- for p in line.properties -%}
+    {%- if p.first == 'Custom order' -%}{%- assign is_custom_print = true -%}{%- endif -%}
+  {%- endfor -%}
+  {%- unless is_custom_print -%}
+  {% for property in line.properties %}
+  {% assign property_first_char = property.first | slice: 0 %}
+  {% if property.last != blank and property_first_char != '_' %}
+    <div class="order-list__item-property">
+      <dt>{{ property.first }}:</dt>
+      <dd>
+      {% if property.last contains '/files/' %}
+        <a href="{{ property.last }}" class="link" target="_blank">
+        {{ property.last | split: '/' | last }}
+        </a>
+      {% else %}
+        {{ property.last }}
+      {% endif %}
+      </dd>
+    </div>
+  {% endif %}
+{% endfor %}
+  {%- endunless -%}
+{% endif %}
+
+{%- comment -%} ===== Variant 2: component.properties (use for the 1 `component` block) ===== {%- endcomment -%}
+{% if component.properties.size > 0 %}
+  {%- assign is_custom_print = false -%}
+  {%- for p in component.properties -%}
+    {%- if p.first == 'Custom order' -%}{%- assign is_custom_print = true -%}{%- endif -%}
+  {%- endfor -%}
+  {%- unless is_custom_print -%}
+  {% for property in component.properties %}
+  {% assign property_first_char = property.first | slice: 0 %}
+  {% if property.last != blank and property_first_char != '_' %}
+    <div class="order-list__item-property">
+      <dt>{{ property.first }}:</dt>
+      <dd>
+      {% if property.last contains '/files/' %}
+        <a href="{{ property.last }}" class="link" target="_blank">
+        {{ property.last | split: '/' | last }}
+        </a>
+      {% else %}
+        {{ property.last }}
+      {% endif %}
+      </dd>
+    </div>
+  {% endif %}
+{% endfor %}
+  {%- endunless -%}
+{% endif %}

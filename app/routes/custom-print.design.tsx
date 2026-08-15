@@ -612,13 +612,13 @@ export default function CustomDesign() {
     {key: 'Print', value: printLabel},
     // A blank (solid-colour) bandana carries no artwork, so every design-related
     // attribute is omitted below.
-    ...(isBlank ? [] : [{key: 'Logo layout', value: patternLabel}]),
-    ...(!isBlank && logo ? [{key: 'Logo', value: logoUrl ?? logo.name}] : []),
+    ...(isBlank ? [] : [{key: 'Design layout', value: patternLabel}]),
+    ...(!isBlank && logo ? [{key: 'Design', value: logoUrl ?? logo.name}] : []),
     ...(!isBlank && logo
-      ? [{key: 'Logo adjust', value: `${logoRotate}° · ${logoScale}%`}]
+      ? [{key: 'Design adjust', value: `${logoRotate}° · ${logoScale}%`}]
       : []),
     ...(!isBlank && logo && marks.length > 1
-      ? [{key: 'Logo spacing', value: `col ${colSpace}% · row ${rowSpace}%`}]
+      ? [{key: 'Design spacing', value: `col ${colSpace}% · row ${rowSpace}%`}]
       : []),
     ...(isBlank
       ? []
@@ -634,9 +634,23 @@ export default function CustomDesign() {
               },
             ]
           : []),
-    // Two-sided "different design" carries a second (back) artwork + proof.
+    // Two-sided "different design" carries a second (back) artwork + proof,
+    // plus its own layout / rotate / spacing so production gets the full back
+    // spec (mirrors the front attributes above and the Quote review).
     ...(isDiff && backLogo
-      ? [{key: 'Back logo', value: backLogoUrl ?? backLogo.name}]
+      ? [
+          {key: 'Back design', value: backLogoUrl ?? backLogo.name},
+          {key: 'Back layout', value: backActivePattern.label},
+          {key: 'Back adjust', value: `${backLogoRotate}° · ${backLogoScale}%`},
+          ...(backMarks.length > 1
+            ? [
+                {
+                  key: 'Back spacing',
+                  value: `col ${backColSpace}% · row ${backRowSpace}%`,
+                },
+              ]
+            : []),
+        ]
       : []),
     ...(isDiff
       ? backDesignOutput
@@ -971,26 +985,72 @@ export default function CustomDesign() {
                       ? []
                       : isDiff
                         ? [
-                            {label: 'Front design', value: logo ? logo.name : 'None'},
-                            {label: 'Front layout', value: patternLabel},
+                            // Two-sided "different" — full front + back breakdown
+                            // so every per-side adjustment is on the quote.
+                            {label: 'Sides', value: 'Different front & back'},
                             {
-                              label: 'Back design',
+                              label: 'Front — design',
+                              value: logo ? logo.name : 'None',
+                            },
+                            {label: 'Front — layout', value: patternLabel},
+                            ...(logo
+                              ? [
+                                  {
+                                    label: 'Front — rotate / size',
+                                    value: `${logoRotate}° · ${logoScale}%`,
+                                  },
+                                  ...(marks.length > 1
+                                    ? [
+                                        {
+                                          label: 'Front — spacing',
+                                          value: `col ${colSpace}% · row ${rowSpace}%`,
+                                        },
+                                      ]
+                                    : []),
+                                ]
+                              : []),
+                            {
+                              label: 'Back — design',
                               value: backLogo ? backLogo.name : 'None',
                             },
-                            {label: 'Back layout', value: backActivePattern.label},
+                            {label: 'Back — layout', value: backActivePattern.label},
+                            ...(backLogo
+                              ? [
+                                  {
+                                    label: 'Back — rotate / size',
+                                    value: `${backLogoRotate}° · ${backLogoScale}%`,
+                                  },
+                                  ...(backMarks.length > 1
+                                    ? [
+                                        {
+                                          label: 'Back — spacing',
+                                          value: `col ${backColSpace}% · row ${backRowSpace}%`,
+                                        },
+                                      ]
+                                    : []),
+                                ]
+                              : []),
                             {label: 'Design help', value: intentLabel},
                           ]
                         : [
-                            {label: 'Logo / design layout', value: patternLabel},
+                            {label: 'Design layout', value: patternLabel},
                             ...(logo
                               ? [
-                                  {label: 'Logo / design', value: logo.name},
+                                  {label: 'Design', value: logo.name},
                                   {
                                     label: 'Rotate / size',
                                     value: `${logoRotate}° · ${logoScale}%`,
                                   },
+                                  ...(marks.length > 1
+                                    ? [
+                                        {
+                                          label: 'Spacing',
+                                          value: `col ${colSpace}% · row ${rowSpace}%`,
+                                        },
+                                      ]
+                                    : []),
                                 ]
-                              : [{label: 'Logo / design', value: 'None'}]),
+                              : [{label: 'Design', value: 'None'}]),
                             {label: 'Design help', value: intentLabel},
                           ]),
                   ]}

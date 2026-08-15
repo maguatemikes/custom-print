@@ -1,0 +1,109 @@
+{%- comment -%}
+  ============================================================================
+  Custom-print "Design details" block for the ORDER CONFIRMATION email.
+
+  WHERE THIS GOES: Shopify admin → Settings → Notifications → Order confirmation.
+  Paste it where the order-summary line items render (it replaces the DEBUG dump).
+  This file is REFERENCE ONLY — it is NOT used by the Hydrogen storefront. The
+  live template lives in Shopify admin.
+
+  HOW IT WORKS: renders each line's custom properties (set as cart-line
+  `attributes` in app/routes/custom-print.design.tsx). Iterate subtotal_line_items
+  then line.properties (p.first = key, p.last = value).
+
+  Option A (full detail): shows every property. Base colour gets a swatch;
+  `Design` + `Design output` (+ back) render as clickable image thumbnails.
+
+  TEST: Resend from a REAL order (Order → Resend order confirmation), NOT the
+  Preview button — Preview uses placeholder data without custom properties.
+  ============================================================================
+{%- endcomment -%}
+
+{% for line in subtotal_line_items %}
+  {%- comment -%}
+    Only render this card for CUSTOM-PRINT lines — skip regular catalogue
+    products in a mixed cart (they have no design properties). Detected via the
+    `Custom order` marker the wizard always attaches. Multiple custom lines each
+    render their own card with their own artwork/proof.
+  {%- endcomment -%}
+  {%- assign isCustom = false -%}
+  {%- for p in line.properties -%}
+    {%- if p.first == 'Custom order' -%}{%- assign isCustom = true -%}{%- endif -%}
+  {%- endfor -%}
+  {%- if isCustom -%}
+
+  {%- assign artwork = '' -%}{%- assign proof = '' -%}
+  {%- assign backArt = '' -%}{%- assign backProof = '' -%}
+  {%- for p in line.properties -%}
+    {%- case p.first -%}
+      {%- when 'Design' -%}{%- assign artwork = p.last -%}
+      {%- when 'Design output' -%}{%- assign proof = p.last -%}
+      {%- when 'Back design' -%}{%- assign backArt = p.last -%}
+      {%- when 'Design output (back)' -%}{%- assign backProof = p.last -%}
+    {%- endcase -%}
+  {%- endfor -%}
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+         style="border:1px solid #ececec;border-radius:12px;margin:12px 0;">
+    <tr><td style="padding:16px 18px;">
+      <p style="margin:0 0 12px;font-size:15px;font-weight:700;color:#101410;">{{ line.title }}</p>
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;">
+        {%- for p in line.properties -%}
+          {%- assign k = p.first -%}{%- assign v = p.last -%}
+          {%- unless v == blank or k contains '_' or k == 'Custom order'
+              or k == 'Design' or k == 'Design output'
+              or k == 'Back design' or k == 'Design output (back)' -%}
+          <tr>
+            <td style="padding:5px 0;color:#6b7280;width:150px;vertical-align:top;">{{ k }}</td>
+            <td style="padding:5px 0;color:#101410;font-weight:600;vertical-align:top;">
+              {%- if k == 'Base colour' -%}
+                <span style="display:inline-block;width:12px;height:12px;border-radius:50%;
+                             background:{{ v }};border:1px solid #d1d5db;vertical-align:middle;margin-right:6px;"></span>{{ v }}
+              {%- else -%}{{ v }}{%- endif -%}
+            </td>
+          </tr>
+          {%- endunless -%}
+        {%- endfor -%}
+      </table>
+
+      {%- if artwork != '' or proof != '' or backArt != '' or backProof != '' -%}
+      <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px;">
+        <tr>
+          {%- if artwork contains '://' -%}
+          <td style="padding-right:14px;text-align:center;vertical-align:top;">
+            <a href="{{ artwork }}"><img src="{{ artwork }}" width="104"
+               style="display:block;border:1px solid #ececec;border-radius:8px;"></a>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Your artwork</p>
+          </td>{%- endif -%}
+          {%- if proof contains '://' -%}
+          <td style="padding-right:14px;text-align:center;vertical-align:top;">
+            <a href="{{ proof }}"><img src="{{ proof }}" width="104"
+               style="display:block;border:1px solid #ececec;border-radius:8px;"></a>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Proof (front)</p>
+          </td>{%- endif -%}
+          {%- if backArt contains '://' -%}
+          <td style="padding-right:14px;text-align:center;vertical-align:top;">
+            <a href="{{ backArt }}"><img src="{{ backArt }}" width="104"
+               style="display:block;border:1px solid #ececec;border-radius:8px;"></a>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Back artwork</p>
+          </td>{%- endif -%}
+          {%- if backProof contains '://' -%}
+          <td style="padding-right:14px;text-align:center;vertical-align:top;">
+            <a href="{{ backProof }}"><img src="{{ backProof }}" width="104"
+               style="display:block;border:1px solid #ececec;border-radius:8px;"></a>
+            <p style="margin:6px 0 0;font-size:11px;color:#6b7280;">Proof (back)</p>
+          </td>{%- endif -%}
+        </tr>
+      </table>
+      {%- endif -%}
+
+      {%- comment -%} If the proof upload failed, `Design output` is a warning string, not a URL. {%- endcomment -%}
+      {%- unless proof contains '://' or proof == '' -%}
+        <p style="margin:10px 0 0;font-size:12px;color:#d97706;">&#9888; {{ proof }}</p>
+      {%- endunless -%}
+    </td></tr>
+  </table>
+
+  {%- endif -%}
+{% endfor %}
