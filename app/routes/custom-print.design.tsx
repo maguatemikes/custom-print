@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useDeferredValue, useEffect, useMemo, useRef, useState} from 'react';
 import {useLoaderData} from 'react-router';
 import type {Route} from './+types/custom-print.design';
 import {siteOrigin} from '~/lib/seo';
@@ -27,6 +27,7 @@ import {BandanaStep} from '~/components/custom-print/BandanaStep';
 import {DesignStep} from '~/components/custom-print/DesignStep';
 import {QuantityStep} from '~/components/custom-print/QuantityStep';
 import {QuoteStep} from '~/components/custom-print/QuoteStep';
+import {CustomPrintInfo} from '~/components/custom-print/CustomPrintInfo';
 
 /* -------------------------------------------------------------------------- */
 /* SEO + loader                                                               */
@@ -574,9 +575,18 @@ export default function CustomDesign() {
   const dSetCol = showBack ? setBackColSpace : setColSpace;
   const dRow = showBack ? backRowSpace : rowSpace;
   const dSetRow = showBack ? setBackRowSpace : setRowSpace;
-  const dMarks = showBack ? backMarks : marks;
-  const dFull = showBack ? backFull : fullDesign;
-  const dSeamless = showBack ? backSeamless : seamless;
+  // Deferred layout for the VISIBLE preview only. Tapping a layout thumbnail
+  // updates `pattern` (urgent) so the button's active state flips instantly;
+  // the heavier preview re-render — which re-decodes the logo image into the new
+  // positions and briefly shows the placeholder — runs a beat later off this
+  // deferred value instead of blocking the tap's paint. The hidden proof
+  // canvases keep the immediate values so proofs stay exact.
+  const dvPattern = useDeferredValue(dPattern);
+  const dvActivePattern =
+    activePatterns.find((p) => p.value === dvPattern) ?? activePatterns[0];
+  const pvMarks = dvActivePattern.marks;
+  const pvFull = Boolean(dvActivePattern.full);
+  const pvSeamless = Boolean(dvActivePattern.seamless);
 
   const baseColor = baseHex;
   const baseLabel = `${baseHex.toUpperCase()} base`;
@@ -691,6 +701,7 @@ export default function CustomDesign() {
     : [];
 
   return (
+    <>
     <div className="bg-paper">
       <div className="ui-container py-8 md:py-12">
         <div className="grid gap-8 lg:grid-cols-[3fr_2fr] lg:gap-12">
@@ -700,9 +711,9 @@ export default function CustomDesign() {
               shape={shape}
               baseColor={baseColor}
               logoPreview={dLogo?.preview ?? null}
-              marks={dMarks}
-              fullDesign={dFull}
-              seamless={dSeamless}
+              marks={pvMarks}
+              fullDesign={pvFull}
+              seamless={pvSeamless}
               logoRotate={dRotate}
               logoScale={dScale}
               colSpace={dCol}
@@ -1111,6 +1122,8 @@ export default function CustomDesign() {
         </div>
       </div>
     </div>
+      <CustomPrintInfo />
+    </>
   );
 }
 
