@@ -130,6 +130,8 @@ export async function loader({context}: Route.LoaderArgs) {
   } catch {
     // Product not published to the headless channel yet — handled in the UI.
   }
+  // Reviews load lazily (client-side, via the /api/reviews resource route) so the
+  // two Judge.me API calls never block the wizard render — see CustomPrintInfo.
   return {variants, currencyCode, productTitle, productHandle};
 }
 
@@ -161,6 +163,7 @@ export default function CustomDesign() {
   const [deliveryAck, setDeliveryAck] = useState(false);
   const [terms, setTerms] = useState(false);
   const [intent, setIntent] = useState<string>('ready');
+  const [designNote, setDesignNote] = useState('');
   const [pattern, setPattern] = useState<string>('single');
   const [logo, setLogo] = useState<{
     name: string;
@@ -207,12 +210,19 @@ export default function CustomDesign() {
   const isDiff = isTwo && designMode === 'different';
   // Bumped by the "Retry" button to re-run the proof generation after a failure.
   const [retryNonce, setRetryNonce] = useState(0);
+  // Gate localStorage writes until saved state is read, so the first render's
+  // defaults can't clobber a saved session (also fixes React 18 StrictMode's
+  // double-invoke, where persist would otherwise overwrite before restore reruns).
+  const [hydrated, setHydrated] = useState(false);
+  // True when a reload landed the shopper past the (non-persisted) artwork step
+  // and we sent them back to re-upload — tailors the artwork-gate hint copy.
+  const [reuploadNotice, setReuploadNotice] = useState(false);
 
   // Restore saved progress on mount ("your selections are saved as you go").
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
+      if (raw) {
       const s = JSON.parse(raw) as Partial<{
         step: number;
         shape: string;
@@ -234,13 +244,28 @@ export default function CustomDesign() {
         deliveryAck: boolean;
         terms: boolean;
         intent: string;
+        designNote: string;
         pattern: string;
         logoRotate: number;
         logoScale: number;
         colSpace: number;
         rowSpace: number;
       }>;
-      if (typeof s.step === 'number') setStep(s.step);
+      if (typeof s.step === 'number') {
+        // Artwork (logo/backLogo) isn't persisted, so it's gone after a reload.
+        // If the saved step is PAST the Design/upload step while artwork is
+        // required (printing, and not the "design-for-me" path), send the shopper
+        // back to re-upload — otherwise they'd land on Quote with no design, where
+        // checkout is enabled and a placeholder proof would upload. Everything else
+        // (size, colour, qty, note…) is still restored.
+        const artRequired = s.printSides !== 'blank' && s.intent !== 'help';
+        if (artRequired && s.step > 1) {
+          setStep(1);
+          setReuploadNotice(true);
+        } else {
+          setStep(s.step);
+        }
+      }
       if (s.shape) setShape(s.shape);
       if (s.size) setSize(s.size);
       if (s.material) setMaterial(s.material);
@@ -260,18 +285,22 @@ export default function CustomDesign() {
       if (s.deliveryAck) setDeliveryAck(true);
       if (s.terms) setTerms(true);
       if (s.intent) setIntent(s.intent);
+      if (typeof s.designNote === 'string') setDesignNote(s.designNote);
       if (s.pattern) setPattern(s.pattern);
       if (typeof s.logoRotate === 'number') setLogoRotate(s.logoRotate);
       if (typeof s.logoScale === 'number') setLogoScale(s.logoScale);
       if (typeof s.colSpace === 'number') setColSpace(s.colSpace);
       if (typeof s.rowSpace === 'number') setRowSpace(s.rowSpace);
+      }
     } catch {
       /* ignore corrupt state */
     }
+    setHydrated(true);
   }, []);
 
-  // Persist progress.
+  // Persist progress (only after hydration, so defaults never clobber a save).
   useEffect(() => {
+    if (!hydrated) return;
     try {
       window.localStorage.setItem(
         STORAGE_KEY,
@@ -289,6 +318,7 @@ export default function CustomDesign() {
           deliveryAck,
           terms,
           intent,
+          designNote,
           pattern,
           printSides,
           designMode,
@@ -307,6 +337,7 @@ export default function CustomDesign() {
       /* storage unavailable */
     }
   }, [
+    hydrated,
     step,
     shape,
     size,
@@ -320,6 +351,7 @@ export default function CustomDesign() {
     deliveryAck,
     terms,
     intent,
+    designNote,
     pattern,
     printSides,
     designMode,
@@ -334,35 +366,17 @@ export default function CustomDesign() {
     rowSpace,
   ]);
 
-  // Upload the logo to Shopify Files the moment it's chosen (so the CDN URL is
-  // ready well before checkout). Falls back to null if no Admin token yet.
+  // Artwork upload is DEFERRED to the Quote step (see the proof effect below), so
+  // tests / tweaks / abandoned designs on the Design step never touch the CDN —
+  // only a shopper who reaches Quote uploads. Here we just keep the hosted URL in
+  // sync with the LOCAL file: whenever the artwork changes or is removed, drop any
+  // previously-hosted URL — the Quote step re-hosts the current file (deduped by
+  // proofSignature so back-and-forth navigation never re-uploads).
   useEffect(() => {
-    if (!logo?.dataUrl) {
-      setLogoUrl(null);
-      return;
-    }
-    let cancelled = false;
-    uploadImage(logo.dataUrl, logo.name).then((u) => {
-      if (!cancelled) setLogoUrl(u);
-    });
-    return () => {
-      cancelled = true;
-    };
+    setLogoUrl(null);
   }, [logo?.dataUrl, logo?.name]);
-
-  // Same, for the back-side artwork (two-sided "different design").
   useEffect(() => {
-    if (!backLogo?.dataUrl) {
-      setBackLogoUrl(null);
-      return;
-    }
-    let cancelled = false;
-    uploadImage(backLogo.dataUrl, backLogo.name).then((u) => {
-      if (!cancelled) setBackLogoUrl(u);
-    });
-    return () => {
-      cancelled = true;
-    };
+    setBackLogoUrl(null);
   }, [backLogo?.dataUrl, backLogo?.name]);
 
   // A signature of everything that changes the rendered proof. When it's
@@ -416,6 +430,8 @@ export default function CustomDesign() {
     sig: string;
     front: string | null;
     back: string | null;
+    art: string | null;
+    backArt: string | null;
   } | null>(null);
 
   // On the Quote step, rasterize the preview → composite PNG → host it as the
@@ -427,6 +443,8 @@ export default function CustomDesign() {
       setDesignStatus('ready');
       setDesignOutput(null);
       setBackDesignOutput(null);
+      setLogoUrl(null);
+      setBackLogoUrl(null);
       return;
     }
     // Design unchanged since the last successful proof → reuse the hosted URLs
@@ -434,6 +452,8 @@ export default function CustomDesign() {
     if (lastProof.current && lastProof.current.sig === proofSignature) {
       setDesignOutput(lastProof.current.front);
       setBackDesignOutput(lastProof.current.back);
+      setLogoUrl(lastProof.current.art);
+      setBackLogoUrl(lastProof.current.backArt);
       setDesignStatus('ready');
       return;
     }
@@ -463,26 +483,49 @@ export default function CustomDesign() {
       return null;
     };
 
+    // Host the customer's ORIGINAL artwork — deferred from pick-time to now, with
+    // the same twice-try retry policy as the proof.
+    const uploadArtwork = async (dataUrl: string, name: string) => {
+      for (let attempt = 0; attempt < 2 && !cancelled; attempt++) {
+        const url = await uploadImage(dataUrl, name);
+        if (url) return url;
+      }
+      return null;
+    };
+
     (async () => {
-      // Front + back proofs rasterize and upload concurrently (two-sided
-      // "different" would otherwise wait through both back-to-back).
-      const [frontUrl, backUrl] = await Promise.all([
+      // Front + back proofs AND the original artwork upload concurrently.
+      const [frontUrl, backUrl, artUrl, backArtUrl] = await Promise.all([
         rasterizeAndUpload('front-proof', 'design-front.png'),
         isDiff
           ? rasterizeAndUpload('back-proof', 'design-back.png')
+          : Promise.resolve<string | null>(null),
+        logo?.dataUrl
+          ? uploadArtwork(logo.dataUrl, logo.name)
+          : Promise.resolve<string | null>(null),
+        isDiff && backLogo?.dataUrl
+          ? uploadArtwork(backLogo.dataUrl, backLogo.name)
           : Promise.resolve<string | null>(null),
       ]);
       if (cancelled) return;
       if (frontUrl) setDesignOutput(frontUrl);
       if (isDiff && backUrl) setBackDesignOutput(backUrl);
+      setLogoUrl(artUrl);
+      setBackLogoUrl(backArtUrl);
       const backOk = isDiff ? Boolean(backUrl) : true;
-      const ok = Boolean(frontUrl) && backOk;
-      // Cache this proof so an unchanged design won't re-upload next time.
+      // If a logo exists, its hosted URL must succeed — otherwise the order would
+      // carry only a filename. Gate readiness on it (also closes the old race).
+      const artOk = logo ? Boolean(artUrl) : true;
+      const backArtOk = isDiff && backLogo ? Boolean(backArtUrl) : true;
+      const ok = Boolean(frontUrl) && backOk && artOk && backArtOk;
+      // Cache this design so an unchanged one won't re-upload (proof OR artwork).
       if (ok) {
         lastProof.current = {
           sig: proofSignature,
           front: frontUrl,
           back: isDiff ? backUrl : null,
+          art: artUrl,
+          backArt: isDiff ? backArtUrl : null,
         };
       }
       setDesignStatus(ok ? 'ready' : 'error');
@@ -676,6 +719,9 @@ export default function CustomDesign() {
       : []),
     {key: 'Quantity', value: String(qty)},
     ...(isBlank ? [] : [{key: 'Design help', value: intentLabel}]),
+    ...(designNote.trim()
+      ? [{key: 'Design brief', value: designNote.trim()}]
+      : []),
     {key: 'Contact email', value: email},
   ];
 
@@ -831,6 +877,8 @@ export default function CustomDesign() {
                 <DesignStep
                   intent={intent}
                   setIntent={setIntent}
+                  designNote={designNote}
+                  setDesignNote={setDesignNote}
                   bothSides={printSides === 'two'}
                   designMode={designMode}
                   setDesignMode={setDesignMode}
@@ -1085,9 +1133,11 @@ export default function CustomDesign() {
                 >
                   <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
                 </svg>
-                {isDiff
-                  ? 'Upload artwork for the front and back to continue.'
-                  : 'Upload your artwork to continue.'}
+                {reuploadNotice
+                  ? 'Your design isn’t saved when the page reloads — please re-upload it to continue.'
+                  : isDiff
+                    ? 'Upload artwork for the front and back to continue.'
+                    : 'Upload your artwork to continue.'}
               </p>
             ) : null}
 

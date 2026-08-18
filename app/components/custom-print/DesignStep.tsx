@@ -15,6 +15,8 @@ export type LogoFile = {
 export function DesignStep({
   intent,
   setIntent,
+  designNote,
+  setDesignNote,
   pattern,
   setPattern,
   patterns,
@@ -43,6 +45,8 @@ export function DesignStep({
 }: {
   intent: string;
   setIntent: (v: string) => void;
+  designNote: string;
+  setDesignNote: (v: string) => void;
   bothSides: boolean;
   designMode: 'same' | 'different';
   setDesignMode: (v: 'same' | 'different') => void;
@@ -479,14 +483,52 @@ export function DesignStep({
         </div>
       </Field>
 
-      <div className="rounded-xl bg-mint p-4">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-ink">
-          What happens next
-        </h3>
-        <p className="mt-1 text-sm text-muted">
-          Just place your order. We&apos;ll email you a link (and show it on your
-          order confirmation) to upload your artwork, share your design ideas,
-          and book a quick call with our creative team to start production.
+      {/* Design brief — shown when the shopper wants any help. Optional, but
+          prompted so our team starts with direction. Attached to the order. */}
+      {intent !== 'ready' ? (
+        <Field
+          n={bothSides ? 5 : 4}
+          title="Tell us about your design"
+          hint="Your idea, colours, any text or slogan, and the occasion — the more detail, the better our team can help."
+        >
+          <textarea
+            value={designNote}
+            onChange={(e) => setDesignNote(e.target.value)}
+            rows={4}
+            placeholder="e.g. A vintage badge for our hiking club — forest green &amp; cream, with the text “Trailblazers · Est. 2019”. For a summer trip."
+            aria-label="Design brief"
+            className="w-full rounded-xl border border-black/15 px-4 py-3 text-sm leading-relaxed focus:border-brand-500 focus:outline-none"
+          />
+        </Field>
+      ) : null}
+
+      {/* Conversion nudge — reassures shoppers who don't have finished artwork:
+          free help, same-day start, risk-free (proof before print). */}
+      <div className="rounded-2xl border border-brand-700/15 bg-mint p-5">
+        <div className="flex items-center gap-2">
+          <svg
+            viewBox="0 0 24 24"
+            className="h-5 w-5 shrink-0 text-brand-700"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="m8.5 12 2.5 2.5 4.5-5" />
+          </svg>
+          <h3 className="text-sm font-extrabold uppercase tracking-wide text-ink">
+            Free design help — we start today
+          </h3>
+        </div>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          No finished artwork? No problem. Place your order and our creative team
+          gets to work the same day — we&apos;ll email a link (also shown on your
+          order confirmation) to share files, talk through ideas, and book a quick
+          call. Nothing is printed until you approve your proof, so there&apos;s
+          zero risk.
         </p>
       </div>
     </div>

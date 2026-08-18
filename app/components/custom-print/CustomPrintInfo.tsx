@@ -1,5 +1,122 @@
-import {useState, type ReactNode} from 'react';
+import {useEffect, useState, type ReactNode} from 'react';
+import {useFetcher} from 'react-router';
 import {MIN_QTY} from '~/lib/customPrintData';
+import {EMPTY_REVIEWS, type JudgemeReviews} from '~/lib/judgeme';
+
+/* On-site "Write a review" form → posts to /api/reviews (server → Judge.me). */
+function WriteReview() {
+  const fetcher = useFetcher<{ok?: boolean; error?: string}>();
+  const [open, setOpen] = useState(false);
+  const [rating, setRating] = useState(0);
+  const submitting = fetcher.state !== 'idle';
+
+  if (fetcher.data?.ok) {
+    return (
+      <div className="rounded-2xl border border-brand-700/20 bg-mint p-5 text-sm">
+        <span className="font-semibold text-brand-700">
+          Thanks for your review!
+        </span>{' '}
+        <span className="text-muted">It’ll appear here once it’s approved.</span>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <div className="rounded-2xl border border-black/10 bg-mint p-5">
+        <h3 className="text-base font-extrabold uppercase tracking-tight text-ink">
+          Share your experience
+        </h3>
+        <p className="mt-1 text-sm leading-relaxed text-muted">
+          Ordered from us? Leave a review to help other shoppers.
+        </p>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="btn btn-dark mt-4 min-h-11 w-full"
+        >
+          Write a review
+        </button>
+      </div>
+    );
+  }
+
+  const input =
+    'h-11 w-full rounded-xl border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none';
+
+  return (
+    <div className="rounded-2xl border border-black/10 bg-paper p-5">
+      <h3 className="mb-4 text-base font-extrabold uppercase tracking-tight text-ink">
+        Write a review
+      </h3>
+      <fetcher.Form
+        method="post"
+        action="/api/reviews"
+        className="space-y-3 text-left"
+      >
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold text-ink">Your rating</span>
+        <div className="flex gap-0.5">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-label={`${n} star${n > 1 ? 's' : ''}`}
+              onClick={() => setRating(n)}
+              className={n <= rating ? 'text-amber-400' : 'text-black/20'}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-6 w-6"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M12 2 15 8.5 22 9.3l-5 4.6L18.5 21 12 17.5 5.5 21 7 13.9l-5-4.6 7-.8Z" />
+              </svg>
+            </button>
+          ))}
+        </div>
+        <input type="hidden" name="rating" value={rating} />
+      </div>
+      <input name="name" required placeholder="Your name" className={input} />
+      <input
+        name="email"
+        type="email"
+        required
+        placeholder="Your email (not published)"
+        className={input}
+      />
+      <input name="title" placeholder="Title (optional)" className={input} />
+      <textarea
+        name="body"
+        required
+        rows={4}
+        placeholder="Tell others about your bandanas — print quality, colours, delivery…"
+        className="w-full rounded-xl border border-black/15 px-3 py-2 text-sm leading-relaxed focus:border-brand-500 focus:outline-none"
+      />
+      {fetcher.data?.error ? (
+        <p className="text-sm font-semibold text-red-600">{fetcher.data.error}</p>
+      ) : null}
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          type="submit"
+          disabled={submitting || rating < 1}
+          className="btn btn-dark min-h-11 flex-1 disabled:opacity-40"
+        >
+          {submitting ? 'Submitting…' : 'Submit review'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-sm font-semibold text-muted hover:text-ink"
+        >
+          Cancel
+        </button>
+      </div>
+      </fetcher.Form>
+    </div>
+  );
+}
 
 /* Row of 5 stars, filled up to `value` (amber). Decorative — aria-hidden. */
 function Stars({value, className = 'h-4 w-4'}: {value: number; className?: string}) {
@@ -24,11 +141,25 @@ function Stars({value, className = 'h-4 w-4'}: {value: number; className?: strin
 
 /**
  * Info band shown BELOW the custom-print wizard: a full Description of the
- * service plus a Reviews tab. Self-contained — owns its own active-tab state,
- * takes no props, and does not touch the wizard.
+ * service plus a Reviews tab (real Judge.me data via the loader). Self-contained
+ * except for the `reviews` prop; does not touch the wizard.
  */
 export function CustomPrintInfo() {
   const [tab, setTab] = useState<'about' | 'reviews'>('about');
+
+  // Reviews are fetched lazily (NOT in the route loader) so the two Judge.me API
+  // calls never delay the wizard's initial render. Loads once on mount.
+  const reviewsFetcher = useFetcher<JudgemeReviews>();
+  useEffect(() => {
+    reviewsFetcher.load('/api/reviews');
+    // load once on mount; fetcher.load is stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const reviewsLoaded = reviewsFetcher.data !== undefined;
+  const reviews = reviewsFetcher.data ?? EMPTY_REVIEWS;
+
+  const {overall, total, distribution, reviews: reviewList} = reviews;
+  const maxDist = Math.max(1, ...distribution.map((d) => d.count));
 
   const tabs = [
     {id: 'about' as const, label: 'Description'},
@@ -46,8 +177,6 @@ export function CustomPrintInfo() {
     ['Turnaround', '~20–30 business days after proof'],
   ];
 
-  // Each section carries a relevant icon (inner SVG paths — the <svg> wrapper
-  // with shared stroke settings lives in the card, no background on the icon).
   const sections: Array<{title: string; body: string; icon: ReactNode}> = [
     {
       title: 'Full-colour digital printing',
@@ -99,51 +228,6 @@ export function CustomPrintInfo() {
     },
   ];
 
-  /* -------------------------------------------------------------------------
-   * MOCK REVIEW DATA — placeholder for the UI only. Do NOT ship to customers as
-   * genuine reviews. Replace with a real source (reviews app / metafield) before
-   * this goes live.
-   * ---------------------------------------------------------------------- */
-  const reviewOverall = 4.8;
-  const reviewTotal = 128;
-  const reviewDist = [
-    {stars: 5, count: 96},
-    {stars: 4, count: 22},
-    {stars: 3, count: 7},
-    {stars: 2, count: 2},
-    {stars: 1, count: 1},
-  ];
-  const reviewCats = [
-    {label: 'Print quality', score: 4.9},
-    {label: 'Value for money', score: 4.7},
-    {label: 'Delivery time', score: 4.5},
-    {label: 'Customer service', score: 4.8},
-  ];
-  const reviews = [
-    {
-      name: 'Alexander R.',
-      when: '2 months ago',
-      score: 5,
-      text: 'Easy ordering and great value — cotton bandanas came out crisp and the colours were spot on. Proof landed the next day. Perfect for our team merch.',
-      photos: 3,
-    },
-    {
-      name: 'Emma C.',
-      when: '3 months ago',
-      score: 4,
-      text: 'Effortless process and unbeatable price. Ordered 200 for an event; the seamless print held up beautifully after washing. Would order again.',
-      photos: 0,
-    },
-    {
-      name: 'Marcus D.',
-      when: '5 months ago',
-      score: 5,
-      text: 'Uploaded our logo, picked a base colour, done. The double-sided print looked exactly like the proof. Fast turnaround for a bulk run.',
-      photos: 2,
-    },
-  ];
-  const maxDist = Math.max(...reviewDist.map((d) => d.count));
-
   return (
     <section className="bg-mint">
       <div className="ui-container py-16 md:py-24">
@@ -173,12 +257,15 @@ export function CustomPrintInfo() {
                 }`}
               >
                 {t.label}
+                {t.id === 'reviews' && total > 0 ? (
+                  <span className="ml-1.5 opacity-70">({total})</span>
+                ) : null}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Description panel — full width, equal-height cards with relevant icons */}
+        {/* Description panel */}
         {tab === 'about' ? (
           <div className="mt-10">
             <p className="max-w-3xl text-lg leading-relaxed text-ink/80">
@@ -192,7 +279,7 @@ export function CustomPrintInfo() {
             </p>
 
             {/* Section cards — full width, two columns, equal height */}
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
+            <div className="mt-8 grid items-start gap-4 sm:grid-cols-2">
               {sections.map((s) => (
                 <div
                   key={s.title}
@@ -237,25 +324,50 @@ export function CustomPrintInfo() {
               </dl>
             </div>
           </div>
+        ) : !reviewsLoaded ? (
+          /* Reviews still loading (lazy fetch) — avoids a false "No reviews yet". */
+          <div className="mt-10 rounded-3xl border border-black/10 bg-paper p-10 text-center text-sm text-muted md:p-16">
+            Loading reviews…
+          </div>
+        ) : total === 0 ? (
+          /* Reviews — empty state + write-review */
+          <div className="mt-10">
+            <div className="rounded-3xl border border-black/10 bg-paper p-10 text-center md:p-16">
+              <div className="flex justify-center">
+                <Stars value={0} className="h-6 w-6 text-black/20" />
+              </div>
+              <p className="mt-5 text-xl font-extrabold uppercase tracking-tight text-ink">
+                No reviews yet
+              </p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
+                Verified customer reviews will appear here once shoppers rate
+                their order. Be the first — every custom order is proofed before
+                we print.
+              </p>
+            </div>
+            <div className="mx-auto mt-6 max-w-md">
+              <WriteReview />
+            </div>
+          </div>
         ) : (
-          /* Reviews panel — MOCK data (see note above). */
-          <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,320px)_1fr] lg:gap-14">
-            {/* Summary */}
-            <div>
+          /* Reviews — real Judge.me data */
+          <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,340px)_1fr] lg:items-start lg:gap-14">
+            {/* Summary + sticky write-review */}
+            <div className="lg:sticky lg:top-24">
               <div className="flex items-end gap-3">
                 <span className="text-5xl font-extrabold leading-none text-ink">
-                  {reviewOverall.toFixed(1)}
+                  {overall.toFixed(1)}
                 </span>
                 <div className="pb-1">
-                  <Stars value={reviewOverall} />
+                  <Stars value={overall} />
                   <p className="mt-1 text-xs text-muted">
-                    {reviewTotal} ratings
+                    {total} review{total === 1 ? '' : 's'}
                   </p>
                 </div>
               </div>
 
               <div className="mt-5 space-y-2">
-                {reviewDist.map((d) => (
+                {distribution.map((d) => (
                   <div key={d.stars} className="flex items-center gap-2 text-xs">
                     <span className="w-3 text-right font-semibold text-ink">
                       {d.stars}
@@ -271,29 +383,24 @@ export function CustomPrintInfo() {
                 ))}
               </div>
 
-              <div className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                {reviewCats.map((c) => (
-                  <div key={c.label} className="flex items-center gap-2.5">
-                    <span className="grid h-7 min-w-[2.5rem] place-items-center rounded-md bg-mint-deep px-1.5 text-xs font-bold text-brand-700">
-                      {c.score.toFixed(1)}
-                    </span>
-                    <span className="text-sm text-ink">{c.label}</span>
-                  </div>
-                ))}
+              <div className="mt-6">
+                <WriteReview />
               </div>
             </div>
 
             {/* Review cards */}
             <div className="space-y-4">
-              {reviews.map((r) => {
-                const initials = r.name
-                  .split(' ')
-                  .map((w) => w[0])
-                  .join('')
-                  .slice(0, 2);
+              {reviewList.map((r) => {
+                const initials =
+                  r.name
+                    .split(' ')
+                    .map((w) => w[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase() || '★';
                 return (
                   <div
-                    key={r.name}
+                    key={r.id}
                     className="rounded-2xl border border-black/10 bg-paper p-5"
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -305,7 +412,9 @@ export function CustomPrintInfo() {
                           <p className="text-sm font-semibold text-ink">
                             {r.name}
                           </p>
-                          <p className="text-xs text-muted">{r.when}</p>
+                          {r.when ? (
+                            <p className="text-xs text-muted">{r.when}</p>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -315,16 +424,20 @@ export function CustomPrintInfo() {
                         </span>
                       </div>
                     </div>
-                    <p className="mt-3 text-sm leading-relaxed text-muted">
-                      {r.text}
-                    </p>
-                    {r.photos > 0 ? (
-                      <div className="mt-3 flex gap-2">
-                        {Array.from({length: r.photos}).map((_, i) => (
-                          <span
-                            key={i}
-                            className="h-14 w-14 rounded-lg bg-gradient-to-br from-mint-deep to-mint ring-1 ring-inset ring-black/5"
-                            aria-hidden="true"
+                    {r.body ? (
+                      <p className="mt-3 text-sm leading-relaxed text-muted">
+                        {r.body}
+                      </p>
+                    ) : null}
+                    {r.photos.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {r.photos.map((url) => (
+                          <img
+                            key={url}
+                            src={url}
+                            alt=""
+                            loading="lazy"
+                            className="h-14 w-14 rounded-lg object-cover ring-1 ring-inset ring-black/5"
                           />
                         ))}
                       </div>
@@ -332,12 +445,6 @@ export function CustomPrintInfo() {
                   </div>
                 );
               })}
-              <button
-                type="button"
-                className="text-sm font-semibold text-brand-700 underline-offset-4 hover:underline"
-              >
-                Read all reviews →
-              </button>
             </div>
           </div>
         )}
