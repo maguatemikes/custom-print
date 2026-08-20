@@ -1,3 +1,4 @@
+import {useEffect, useState} from 'react';
 import {MIN_QTY} from '~/lib/customPrintData';
 import {Field} from './primitives';
 import {TierTable} from './TierTable';
@@ -25,6 +26,16 @@ export function QuantityStep({
   terms: boolean;
   setTerms: (v: boolean) => void;
 }) {
+  // Local text mirror so the field can be cleared / typed freely (e.g. clear
+  // then type "18"). The parent `qty` only ever holds a valid integer ≥ MIN_QTY;
+  // we update it live when the typed value is valid and clamp on blur. Kept in
+  // sync when qty changes elsewhere (e.g. picking a tier row).
+  const [qtyInput, setQtyInput] = useState(String(qty));
+  useEffect(() => {
+    setQtyInput(String(qty));
+  }, [qty]);
+  const belowMin = qtyInput !== '' && Number(qtyInput) < MIN_QTY;
+
   return (
     <div>
       <Field
@@ -43,18 +54,31 @@ export function QuantityStep({
           <input
             type="number"
             min={MIN_QTY}
-            value={qty}
-            onChange={(e) =>
-              setQty(Math.max(MIN_QTY, Number(e.target.value) || MIN_QTY))
-            }
+            step={1}
+            value={qtyInput}
+            onChange={(e) => {
+              const v = e.target.value;
+              setQtyInput(v);
+              const n = Math.floor(Number(v));
+              // Only push a VALID integer up to the parent; below-min/blank
+              // stays local so the parent qty (price + cart) is never invalid.
+              if (Number.isFinite(n) && n >= MIN_QTY) setQty(n);
+            }}
+            onBlur={() => {
+              const n = Math.floor(Number(qtyInput));
+              const clamped =
+                Number.isFinite(n) && n >= MIN_QTY ? n : MIN_QTY;
+              setQty(clamped);
+              setQtyInput(String(clamped));
+            }}
             aria-label="Custom quantity"
             className="h-11 w-24 rounded-xl border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
           />
           <span className="text-sm text-muted">pcs</span>
         </div>
-        {qty < MIN_QTY ? (
+        {belowMin ? (
           <p className="mt-2 text-xs font-semibold text-red-600">
-            Minimum order is {MIN_QTY} pieces.
+            Minimum order is {MIN_QTY} pieces — we&apos;ll set it to {MIN_QTY}.
           </p>
         ) : null}
       </Field>

@@ -1,7 +1,14 @@
 import type React from 'react';
 import {ColorSpectrum} from '~/components/ColorSpectrum';
 import {SelectMenu} from '~/components/SelectMenu';
-import {SHAPES, MATERIALS, sizesFor} from '~/lib/customPrintData';
+import {
+  SHAPES,
+  MATERIALS,
+  sizesFor,
+  isCustomSizeValid,
+  MIN_CUSTOM_IN,
+  MAX_CUSTOM_IN,
+} from '~/lib/customPrintData';
 import {Field, OptionCard} from './primitives';
 
 export function BandanaStep({
@@ -180,30 +187,41 @@ export function BandanaStep({
           ]}
         />
         {customSize ? (
-          <div className="mt-2 flex items-center gap-2">
-            <input
-              type="number"
-              min={4}
-              max={80}
-              placeholder="W"
-              value={csW}
-              onChange={(e) => setCsW(e.target.value)}
-              aria-label="Custom width in inches"
-              className="h-11 w-20 rounded-lg border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
-            />
-            <span className="text-muted">×</span>
-            <input
-              type="number"
-              min={4}
-              max={80}
-              placeholder="H"
-              value={csH}
-              onChange={(e) => setCsH(e.target.value)}
-              aria-label="Custom height in inches"
-              className="h-11 w-20 rounded-lg border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
-            />
-            <span className="text-sm text-muted">inches</span>
-          </div>
+          <>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                min={MIN_CUSTOM_IN}
+                max={MAX_CUSTOM_IN}
+                placeholder="W"
+                value={csW}
+                onChange={(e) => setCsW(e.target.value)}
+                aria-label="Custom width in inches"
+                className="h-11 w-20 rounded-lg border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
+              />
+              <span className="text-muted">×</span>
+              <input
+                type="number"
+                min={MIN_CUSTOM_IN}
+                max={MAX_CUSTOM_IN}
+                placeholder="H"
+                value={csH}
+                onChange={(e) => setCsH(e.target.value)}
+                aria-label="Custom height in inches"
+                className="h-11 w-20 rounded-lg border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
+              />
+              <span className="text-sm text-muted">inches</span>
+            </div>
+            {(!csW && !csH) || isCustomSizeValid(csW, csH) ? (
+              <p className="mt-1.5 text-xs text-muted">
+                Between {MIN_CUSTOM_IN} and {MAX_CUSTOM_IN} inches each.
+              </p>
+            ) : (
+              <p className="mt-1.5 text-sm font-semibold text-red-600">
+                Width and height must be {MIN_CUSTOM_IN}–{MAX_CUSTOM_IN} inches.
+              </p>
+            )}
+          </>
         ) : null}
       </Field>
 

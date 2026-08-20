@@ -1,6 +1,7 @@
 import {useRef} from 'react';
 import type React from 'react';
 import {PATTERNS, INTENTS} from '~/lib/customPrintData';
+import {downscaleDataUrl} from '~/lib/customPrintProof';
 import {Field, NudgeRow} from './primitives';
 import {PatternThumb} from './PatternThumb';
 
@@ -119,14 +120,27 @@ export function DesignStep({
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const dataUrl =
         typeof reader.result === 'string' ? reader.result : null;
+      // Downscale ONLY the on-screen/proof preview (raster images) so the wizard
+      // never renders a full-res (up to 25MB) image — that was the source of the
+      // mobile lag/OOM when scaling, rotating, or tiling. The ORIGINAL `dataUrl`
+      // is kept for the print upload, so print quality is unchanged. SVG stays
+      // vector (renders crisp, tiny file); PDF has no on-screen preview.
+      const isRaster =
+        file.type === 'image/png' || file.type === 'image/jpeg';
+      const preview =
+        dataUrl && file.type.startsWith('image/')
+          ? isRaster
+            ? await downscaleDataUrl(dataUrl, 1600)
+            : dataUrl
+          : null;
       setLogo({
         name: file.name,
         type: file.type,
         size: file.size,
-        preview: file.type.startsWith('image/') ? dataUrl : null,
+        preview,
         dataUrl,
       });
     };

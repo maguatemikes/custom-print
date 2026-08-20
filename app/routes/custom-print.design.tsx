@@ -16,6 +16,7 @@ import {
   money,
   STORAGE_KEY,
   EMAIL_RE,
+  isCustomSizeValid,
 } from '~/lib/customPrintData';
 import {svgToPng, uploadImage} from '~/lib/customPrintProof';
 import {
@@ -217,6 +218,17 @@ export default function CustomDesign() {
   // True when a reload landed the shopper past the (non-persisted) artwork step
   // and we sent them back to re-upload — tailors the artwork-gate hint copy.
   const [reuploadNotice, setReuploadNotice] = useState(false);
+  // A11y: focus the step panel on each step change so keyboard/screen-reader
+  // users are moved to (and hear) the new step. Skips the initial mount.
+  const stepPanelRef = useRef<HTMLDivElement>(null);
+  const firstStepRender = useRef(true);
+  useEffect(() => {
+    if (firstStepRender.current) {
+      firstStepRender.current = false;
+      return;
+    }
+    stepPanelRef.current?.focus();
+  }, [step]);
 
   // Restore saved progress on mount ("your selections are saved as you go").
   useEffect(() => {
@@ -299,43 +311,48 @@ export default function CustomDesign() {
   }, []);
 
   // Persist progress (only after hydration, so defaults never clobber a save).
+  // Debounced 300ms: the cleanup clears the pending write on every change, so
+  // rapid input (typing, dragging sliders) writes once things settle, not per key.
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          step,
-          shape,
-          size,
-          customSize,
-          csW,
-          csH,
-          material,
-          baseHex,
-          qty,
-          email,
-          deliveryAck,
-          terms,
-          intent,
-          designNote,
-          pattern,
-          printSides,
-          designMode,
-          backPattern,
-          backLogoRotate,
-          backLogoScale,
-          backColSpace,
-          backRowSpace,
-          logoRotate,
-          logoScale,
-          colSpace,
-          rowSpace,
-        }),
-      );
-    } catch {
-      /* storage unavailable */
-    }
+    const t = setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            step,
+            shape,
+            size,
+            customSize,
+            csW,
+            csH,
+            material,
+            baseHex,
+            qty,
+            email,
+            deliveryAck,
+            terms,
+            intent,
+            designNote,
+            pattern,
+            printSides,
+            designMode,
+            backPattern,
+            backLogoRotate,
+            backLogoScale,
+            backColSpace,
+            backRowSpace,
+            logoRotate,
+            logoScale,
+            colSpace,
+            rowSpace,
+          }),
+        );
+      } catch {
+        /* storage unavailable */
+      }
+    }, 300);
+    return () => clearTimeout(t);
   }, [
     hydrated,
     step,
@@ -537,7 +554,7 @@ export default function CustomDesign() {
     // Retry, or on entering the Quote step — NOT on mere back-and-forth.
   }, [step, proofSignature, retryNonce, isBlank, isDiff]);
 
-  const sizeReady = customSize ? Boolean(csW && csH) : Boolean(size);
+  const sizeReady = customSize ? isCustomSizeValid(csW, csH) : Boolean(size);
   const sizeDisplay = customSize
     ? `${csW || '?'} × ${csH || '?'} in`
     : size
@@ -638,7 +655,11 @@ export default function CustomDesign() {
   // shape (square and triangle have different size lists).
   const selectShape = (v: string) => {
     setShape(v);
+    // Reset BOTH front and back layout to a valid default for the new shape —
+    // otherwise a back pattern from the old shape (e.g. 'single') no longer
+    // exists and silently falls back to Full print.
     setPattern(v === 'Triangle' ? 'tri-single' : 'single');
+    setBackPattern(v === 'Triangle' ? 'tri-single' : 'single');
     setCustomSize(false);
     setSize(DEFAULT_SIZE[v] ?? SIZES[2].name);
   };
@@ -666,7 +687,16 @@ export default function CustomDesign() {
     // A blank (solid-colour) bandana carries no artwork, so every design-related
     // attribute is omitted below.
     ...(isBlank ? [] : [{key: 'Design layout', value: patternLabel}]),
-    ...(!isBlank && logo ? [{key: 'Design', value: logoUrl ?? logo.name}] : []),
+    ...(!isBlank && logo
+      ? [
+          {
+            key: 'Design',
+            // On the error path logoUrl is null — flag it clearly rather than
+            // showing a bare filename that reads like a real hosted asset.
+            value: logoUrl ?? `${logo.name} (not uploaded — proof to follow)`,
+          },
+        ]
+      : []),
     ...(!isBlank && logo
       ? [{key: 'Design adjust', value: `${logoRotate}° · ${logoScale}%`}]
       : []),
@@ -692,7 +722,11 @@ export default function CustomDesign() {
     // spec (mirrors the front attributes above and the Quote review).
     ...(isDiff && backLogo
       ? [
-          {key: 'Back design', value: backLogoUrl ?? backLogo.name},
+          {
+            key: 'Back design',
+            value:
+              backLogoUrl ?? `${backLogo.name} (not uploaded — proof to follow)`,
+          },
           {key: 'Back layout', value: backActivePattern.label},
           {key: 'Back adjust', value: `${backLogoRotate}° · ${backLogoScale}%`},
           ...(backMarks.length > 1
@@ -848,7 +882,13 @@ export default function CustomDesign() {
 
             <ProgressBar step={step} />
 
-            <div className="mt-6">
+            <div
+              ref={stepPanelRef}
+              tabIndex={-1}
+              role="group"
+              aria-label={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}
+              className="mt-6 outline-none"
+            >
               {step === 0 ? (
                 <BandanaStep
                   shape={shape}
@@ -1138,6 +1178,27 @@ export default function CustomDesign() {
                   : isDiff
                     ? 'Upload artwork for the front and back to continue.'
                     : 'Upload your artwork to continue.'}
+              </p>
+            ) : null}
+
+            {/* Quantity/quote gate — explains the disabled "Next" on step 2. */}
+            {step === 2 && !stepValid[2] ? (
+              <p className="mt-6 flex items-center gap-1.5 text-sm font-semibold text-orange-600">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4 shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+                </svg>
+                {!EMAIL_RE.test(email)
+                  ? 'Enter a valid email to continue.'
+                  : 'Accept the delivery time and terms to continue.'}
               </p>
             ) : null}
 

@@ -1,4 +1,4 @@
-import {useEffect, useState, type ReactNode} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {useFetcher} from 'react-router';
 import {MIN_QTY} from '~/lib/customPrintData';
 import {EMPTY_REVIEWS, type JudgemeReviews} from '~/lib/judgeme';
@@ -148,13 +148,17 @@ export function CustomPrintInfo() {
   const [tab, setTab] = useState<'about' | 'reviews'>('about');
 
   // Reviews are fetched lazily (NOT in the route loader) so the two Judge.me API
-  // calls never delay the wizard's initial render. Loads once on mount.
+  // calls never delay the wizard's render — and only the FIRST time the Reviews
+  // tab is opened, so shoppers who never look at reviews trigger zero API calls.
   const reviewsFetcher = useFetcher<JudgemeReviews>();
+  const reviewsRequested = useRef(false);
   useEffect(() => {
-    reviewsFetcher.load('/api/reviews');
-    // load once on mount; fetcher.load is stable
+    if (tab === 'reviews' && !reviewsRequested.current) {
+      reviewsRequested.current = true;
+      reviewsFetcher.load('/api/reviews');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [tab]);
   const reviewsLoaded = reviewsFetcher.data !== undefined;
   const reviews = reviewsFetcher.data ?? EMPTY_REVIEWS;
 

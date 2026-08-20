@@ -45,6 +45,25 @@ export const DEFAULT_SIZE: Record<string, string> = {
 
 export const MIN_QTY = 12;
 
+// Custom (enter-your-own) bandana dimensions, in inches. Enforced in the wizard
+// so 0/negative/out-of-range values can't pass the step and reach the cart.
+export const MIN_CUSTOM_IN = 4;
+export const MAX_CUSTOM_IN = 80;
+
+/** True only when both custom dimensions are real numbers within the allowed range. */
+export function isCustomSizeValid(w: string, h: string): boolean {
+  const wn = Number(w);
+  const hn = Number(h);
+  return (
+    Number.isFinite(wn) &&
+    Number.isFinite(hn) &&
+    wn >= MIN_CUSTOM_IN &&
+    wn <= MAX_CUSTOM_IN &&
+    hn >= MIN_CUSTOM_IN &&
+    hn <= MAX_CUSTOM_IN
+  );
+}
+
 // Uniform Shopify list price every variant starts at — the "you save vs" anchor.
 // The volume discount reduces from this down to the per-piece tier price, so it
 // must match BASE in the tiered-pricing discount function.

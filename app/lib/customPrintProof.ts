@@ -5,6 +5,44 @@
 /* in the browser.                                                             */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Downscale a raster data URL to fit within `maxDim` px on its longest side,
+ * preserving aspect ratio + transparency (PNG out). Used for the on-screen
+ * preview + proof so the wizard never renders/rasterizes a full-resolution
+ * (up to ~25MB) image — which caused mobile lag/OOM when scaling, rotating, or
+ * tiling (each layout paints the image up to 9–36×). The ORIGINAL data URL is
+ * kept separately for the print upload, so print quality is unchanged.
+ * Returns the input unchanged if it's already within `maxDim`, or on any error.
+ */
+export function downscaleDataUrl(
+  dataUrl: string,
+  maxDim = 1600,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const longest = Math.max(img.width, img.height);
+      if (!longest || longest <= maxDim) return resolve(dataUrl);
+      const scale = maxDim / longest;
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(dataUrl);
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL('image/png'));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 /** POST a data URL to the upload route → Shopify Files CDN URL (null on fail). */
 export async function uploadImage(
   dataUrl: string,
