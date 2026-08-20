@@ -6,17 +6,23 @@
 /* -------------------------------------------------------------------------- */
 
 /**
- * Downscale a raster data URL to fit within `maxDim` px on its longest side,
- * preserving aspect ratio + transparency (PNG out). Used for the on-screen
- * preview + proof so the wizard never renders/rasterizes a full-resolution
- * (up to ~25MB) image — which caused mobile lag/OOM when scaling, rotating, or
- * tiling (each layout paints the image up to 9–36×). The ORIGINAL data URL is
- * kept separately for the print upload, so print quality is unchanged.
+ * Downscale a raster data URL to fit within `maxDim` px on its longest side.
+ * Used for the on-screen preview + proof so the wizard never renders/rasterizes
+ * a full-resolution image — which the SVG re-samples up to 9–36× PER FRAME while
+ * scaling/rotating/tiling, causing mobile lag/OOM. The preview only displays at
+ * ~400px and the proof rasterizes at 600px, so ~800px is ample and keeps the
+ * paint cost tiny. The ORIGINAL data URL is kept separately for the print
+ * upload, so print quality is unchanged.
+ *
+ * `mime` should be 'image/png' for artwork with transparency (logos) and
+ * 'image/jpeg' for photos — JPEG keeps the in-memory string far smaller.
  * Returns the input unchanged if it's already within `maxDim`, or on any error.
  */
 export function downscaleDataUrl(
   dataUrl: string,
-  maxDim = 1600,
+  maxDim = 800,
+  mime: 'image/png' | 'image/jpeg' = 'image/png',
+  quality = 0.9,
 ): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -33,7 +39,7 @@ export function downscaleDataUrl(
       if (!ctx) return resolve(dataUrl);
       ctx.drawImage(img, 0, 0, w, h);
       try {
-        resolve(canvas.toDataURL('image/png'));
+        resolve(canvas.toDataURL(mime, quality));
       } catch {
         resolve(dataUrl);
       }

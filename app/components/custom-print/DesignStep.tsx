@@ -133,7 +133,13 @@ export function DesignStep({
       const preview =
         dataUrl && file.type.startsWith('image/')
           ? isRaster
-            ? await downscaleDataUrl(dataUrl, 1600)
+            ? // ~800px is plenty for the ~400px preview + 600px proof; JPEG
+              // output for photos keeps the in-memory string small.
+              await downscaleDataUrl(
+                dataUrl,
+                800,
+                file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png',
+              )
             : dataUrl
           : null;
       setLogo({
