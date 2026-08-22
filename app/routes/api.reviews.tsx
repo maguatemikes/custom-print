@@ -9,8 +9,9 @@ import {fetchProductReviews, submitReview} from '~/lib/judgeme.server';
  *           server-side, so the private token never touches the client.
  */
 
-// The product these reviews attach to — matches the wizard loader's productHandle.
-const PRODUCT_HANDLE = 'design-your-bandana';
+// The product these reviews attach to. Both shape wizards share one review pool
+// (the Square product) so reviews aren't fragmented across shapes pre-launch.
+const PRODUCT_HANDLE = 'custom-square-bandana-wizard';
 
 export async function loader({context}: Route.LoaderArgs) {
   return fetchProductReviews(context.env, PRODUCT_HANDLE);

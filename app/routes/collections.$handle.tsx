@@ -12,6 +12,7 @@ import {
   type Facet,
 } from '~/components/CollectionFilters';
 import {GridPending} from '~/components/GridPending';
+import {customWizardPath} from '~/lib/customPrintData';
 import {siteOrigin} from '~/lib/seo';
 
 export const meta: Route.MetaFunction = ({data, matches}) => {
@@ -113,6 +114,13 @@ export default function Collection() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const facets = (collection.products?.filters ?? []) as unknown as Facet[];
   const pending = useFilterPending();
+  // A collection made entirely of made-to-order shape products (e.g. Made to
+  // Order → Square/Triangle) has nothing to filter by — each product is a wizard
+  // entry, not a variant-faceted item — so hide the filter UI there.
+  const collectionNodes = collection.products?.nodes ?? [];
+  const hideFilters =
+    collectionNodes.length > 0 &&
+    collectionNodes.every((p) => customWizardPath(p.handle));
 
   return (
     <div className="bg-paper">
@@ -130,41 +138,47 @@ export default function Collection() {
 
       <div className="ui-container flex flex-col gap-8 py-10 lg:flex-row">
         {/* Desktop sidebar */}
-        <div className="hidden lg:block lg:w-60 lg:shrink-0">
-          <div className="sticky top-28">
-            <p className="mb-5 text-sm font-bold uppercase tracking-wide text-ink">
-              Filters
-            </p>
-            <CollectionFilters facets={facets} />
+        {!hideFilters && (
+          <div className="hidden lg:block lg:w-60 lg:shrink-0">
+            <div className="sticky top-28">
+              <p className="mb-5 text-sm font-bold uppercase tracking-wide text-ink">
+                Filters
+              </p>
+              <CollectionFilters facets={facets} />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Results */}
         <div id="collection-results" className="min-w-0 flex-1 scroll-mt-32">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setFiltersOpen(true)}
-              className="btn btn-outline !px-4 !py-2 text-sm lg:hidden"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                <path
-                  d="M4 6h16M7 12h10M10 18h4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              Filters
-            </button>
+            {!hideFilters && (
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                className="btn btn-outline !px-4 !py-2 text-sm lg:hidden"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4">
+                  <path
+                    d="M4 6h16M7 12h10M10 18h4"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                Filters
+              </button>
+            )}
             <div className="ml-auto">
               <SortMenu />
             </div>
           </div>
 
-          <div className="mb-5">
-            <ActiveFilterChips facets={facets} />
-          </div>
+          {!hideFilters && (
+            <div className="mb-5">
+              <ActiveFilterChips facets={facets} />
+            </div>
+          )}
 
           <GridPending pending={pending}>
           <Pagination connection={collection.products}>
@@ -215,7 +229,7 @@ export default function Collection() {
       </div>
 
       {/* Mobile filter drawer */}
-      {filtersOpen && (
+      {!hideFilters && filtersOpen && (
         <div className="fixed inset-0 z-[100] lg:hidden">
           <button
             aria-label="Close filters"

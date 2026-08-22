@@ -2,18 +2,15 @@ import type React from 'react';
 import {ColorSpectrum} from '~/components/ColorSpectrum';
 import {SelectMenu} from '~/components/SelectMenu';
 import {
-  SHAPES,
   MATERIALS,
-  sizesFor,
   isCustomSizeValid,
   MIN_CUSTOM_IN,
   MAX_CUSTOM_IN,
 } from '~/lib/customPrintData';
-import {Field, OptionCard} from './primitives';
+import {Field} from './primitives';
 
 export function BandanaStep({
-  shape,
-  setShape,
+  sizes,
   size,
   setSize,
   customSize,
@@ -29,8 +26,8 @@ export function BandanaStep({
   printSides,
   setPrintSides,
 }: {
-  shape: string;
-  setShape: (v: string) => void;
+  // Size options come from the product's Shopify variants (see the route).
+  sizes: string[];
   size: string;
   setSize: (v: string) => void;
   customSize: boolean;
@@ -151,25 +148,7 @@ export function BandanaStep({
         <ColorSpectrum value={baseHex} onChange={setBaseHex} />
       </Field>
 
-      <Field n={3} title="Bandana shape" hint="Choose the cut of your bandana.">
-
-        <div className="grid grid-cols-2 gap-2">
-          {SHAPES.map((s) => (
-            <OptionCard
-              key={s.name}
-              selected={shape === s.name}
-              disabled={s.soon}
-              onClick={() => {
-                if (!s.soon) setShape(s.name);
-              }}
-            >
-              {s.soon ? `${s.name} · Coming soon` : s.name}
-            </OptionCard>
-          ))}
-        </div>
-      </Field>
-
-      <Field n={4} title="Bandana size" hint="Pick a finished size.">
+      <Field n={3} title="Bandana size" hint="Pick a finished size.">
         <SelectMenu
           ariaLabel="Bandana size"
           value={customSize ? 'custom' : size}
@@ -182,7 +161,7 @@ export function BandanaStep({
             }
           }}
           options={[
-            ...sizesFor(shape).map((s) => ({value: s.name, label: `${s.name} in`})),
+            ...sizes.map((name) => ({value: name, label: `${name} in`})),
             {value: 'custom', label: 'Custom size — enter your own'},
           ]}
         />
@@ -225,7 +204,7 @@ export function BandanaStep({
         ) : null}
       </Field>
 
-      <Field n={5} title="Material" hint="Choose the fabric we print on.">
+      <Field n={4} title="Material" hint="Choose the fabric we print on.">
         <SelectMenu
           ariaLabel="Material"
           value={material}

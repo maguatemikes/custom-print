@@ -1,15 +1,15 @@
 import {useDeferredValue, useEffect, useMemo, useRef, useState} from 'react';
-import {useLoaderData} from 'react-router';
-import type {Route} from './+types/custom-print.design';
+import {useLoaderData, redirect} from 'react-router';
+import type {Route} from './+types/custom-print.$shape';
 import {siteOrigin} from '~/lib/seo';
 import {useAside} from '~/components/Aside';
 import {
-  SIZES,
   DEFAULT_SIZE,
   MIN_QTY,
   LIST_PRICE,
   INTENTS,
   STEPS,
+  sizesFor,
   patternsFor,
   unitPriceFor,
   nextTier,
@@ -17,6 +17,7 @@ import {
   STORAGE_KEY,
   EMAIL_RE,
   isCustomSizeValid,
+  shapeRouteFor,
 } from '~/lib/customPrintData';
 import {svgToPng, uploadImage} from '~/lib/customPrintProof';
 import {
@@ -34,11 +35,13 @@ import {CustomPrintInfo} from '~/components/custom-print/CustomPrintInfo';
 /* SEO + loader                                                               */
 /* -------------------------------------------------------------------------- */
 
-export const meta: Route.MetaFunction = ({matches}) => {
-  const title = 'Design your custom bandana online — Custom Bandanas';
-  const description =
-    'Design custom-printed bandanas online in four steps: shape & size, quantity, design help, and an instant quote. Full-color digital printing, made to order, proofed before we print, with bulk & wholesale pricing.';
-  const url = `${siteOrigin(matches)}/custom-print/design`;
+export const meta: Route.MetaFunction = ({matches, data, params}) => {
+  const shape = data?.shape ?? '';
+  const slug = (params?.shape ?? 'square').toLowerCase();
+  const noun = shape ? `${shape.toLowerCase()} bandana` : 'bandana';
+  const title = `Design a custom ${noun} online — Custom Bandanas`;
+  const description = `Design custom-printed ${noun}s online in four steps: size, quantity, design help, and an instant quote. Full-color digital printing, made to order, proofed before we print, with bulk & wholesale pricing.`;
+  const url = `${siteOrigin(matches)}/custom-print/${slug}`;
   return [
     {title},
     {name: 'description', content: description},
@@ -76,15 +79,22 @@ type WizardVariant = {
  * (custom size → the `Custom` variant). If the product isn't published to the
  * Headless channel, `variants` is empty and the wizard shows a setup notice.
  */
-export async function loader({context}: Route.LoaderArgs) {
+export async function loader({context, params}: Route.LoaderArgs) {
+  // The route slug (square/triangle) fixes the shape + which product loads.
+  // Unknown slugs (including the legacy `/custom-print/design`, which is now the
+  // shape-picker page) fall back to the Square wizard.
+  const route = shapeRouteFor(params.shape);
+  if (!route) throw redirect('/custom-print/square');
+  const slug = params.shape!.toLowerCase();
+
   const {storefront} = context;
   let variants: WizardVariant[] = [];
   let currencyCode = 'USD';
-  let productTitle = 'Design your bandana';
-  let productHandle = 'design-your-bandana';
+  let productTitle = `Custom ${route.label} Bandana`;
+  let productHandle = route.handle;
   try {
     const data = (await storefront.query(CUSTOM_PRODUCT_QUERY, {
-      variables: {handle: 'design-your-bandana'},
+      variables: {handle: route.handle},
     })) as {
       product?: {
         title?: string;
@@ -133,7 +143,15 @@ export async function loader({context}: Route.LoaderArgs) {
   }
   // Reviews load lazily (client-side, via the /api/reviews resource route) so the
   // two Judge.me API calls never block the wizard render — see CustomPrintInfo.
-  return {variants, currencyCode, productTitle, productHandle};
+  return {
+    variants,
+    currencyCode,
+    productTitle,
+    productHandle,
+    shape: route.label,
+    slug,
+    defaultPattern: route.defaultPattern,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -141,15 +159,40 @@ export async function loader({context}: Route.LoaderArgs) {
 /* -------------------------------------------------------------------------- */
 
 export default function CustomDesign() {
-  const {variants, currencyCode, productTitle, productHandle} =
+  const {variants, currencyCode, productTitle, productHandle, shape, slug, defaultPattern} =
     useLoaderData<typeof loader>();
   const {open} = useAside();
 
+  // Size options come LIVE from the product's Shopify variants (Size option,
+  // minus the "Custom" bucket, deduped in variant order). Falls back to the
+  // in-code list for this shape if the product isn't loaded (empty variants).
+  const sizeNames = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const v of variants) {
+      if (v.size && v.size.toLowerCase() !== 'custom' && !seen.has(v.size)) {
+        seen.add(v.size);
+        out.push(v.size);
+      }
+    }
+    return out.length ? out : sizesFor(shape).map((s) => s.name);
+  }, [variants, shape]);
+  // A sensible starting size for this shape: its DEFAULT_SIZE if the product
+  // offers it, else the first available size.
+  const initialSize = () => {
+    const def = DEFAULT_SIZE[shape];
+    return def && sizeNames.includes(def) ? def : sizeNames[0] ?? '';
+  };
+
+  // Progress is saved PER SHAPE so a square and a triangle in-flight don't
+  // clobber each other (each shape is its own product/page).
+  const storageKey = `${STORAGE_KEY}:${slug}`;
+
   const [step, setStep] = useState(0);
   // Pre-selected sensible defaults — the first step is valid on arrival and a
-  // price shows immediately (lower friction + a default-anchoring nudge).
-  const [shape, setShape] = useState<string>('Square');
-  const [size, setSize] = useState<string>('22 x 22');
+  // price shows immediately (lower friction + a default-anchoring nudge). Shape
+  // is fixed by the route (the product you're on), so it isn't selectable here.
+  const [size, setSize] = useState<string>(initialSize);
   const [customSize, setCustomSize] = useState(false);
   const [csW, setCsW] = useState('');
   const [csH, setCsH] = useState('');
@@ -165,7 +208,7 @@ export default function CustomDesign() {
   const [terms, setTerms] = useState(false);
   const [intent, setIntent] = useState<string>('ready');
   const [designNote, setDesignNote] = useState('');
-  const [pattern, setPattern] = useState<string>('single');
+  const [pattern, setPattern] = useState<string>(defaultPattern);
   const [logo, setLogo] = useState<{
     name: string;
     type: string;
@@ -197,7 +240,7 @@ export default function CustomDesign() {
   const [activeSide, setActiveSide] = useState<'front' | 'back'>('front');
   const [backLogo, setBackLogo] = useState<typeof logo>(null);
   const [backLogoError, setBackLogoError] = useState<string | null>(null);
-  const [backPattern, setBackPattern] = useState<string>('single');
+  const [backPattern, setBackPattern] = useState<string>(defaultPattern);
   const [backLogoRotate, setBackLogoRotate] = useState(0);
   const [backLogoScale, setBackLogoScale] = useState(100);
   const [backColSpace, setBackColSpace] = useState(100);
@@ -233,7 +276,7 @@ export default function CustomDesign() {
   // Restore saved progress on mount ("your selections are saved as you go").
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(storageKey);
       if (raw) {
       const s = JSON.parse(raw) as Partial<{
         step: number;
@@ -278,8 +321,9 @@ export default function CustomDesign() {
           setStep(s.step);
         }
       }
-      if (s.shape) setShape(s.shape);
-      if (s.size) setSize(s.size);
+      // Shape is fixed by the route now, so it's never restored. Only restore a
+      // saved size if the product still offers it (admin may have changed sizes).
+      if (s.size && sizeNames.includes(s.size)) setSize(s.size);
       if (s.material) setMaterial(s.material);
       if (typeof s.customSize === 'boolean') setCustomSize(s.customSize);
       if (s.csW) setCsW(s.csW);
@@ -318,10 +362,9 @@ export default function CustomDesign() {
     const t = setTimeout(() => {
       try {
         window.localStorage.setItem(
-          STORAGE_KEY,
+          storageKey,
           JSON.stringify({
             step,
-            shape,
             size,
             customSize,
             csW,
@@ -355,8 +398,8 @@ export default function CustomDesign() {
     return () => clearTimeout(t);
   }, [
     hydrated,
+    storageKey,
     step,
-    shape,
     size,
     customSize,
     csW,
@@ -651,19 +694,6 @@ export default function CustomDesign() {
   const baseColor = baseHex;
   const baseLabel = `${baseHex.toUpperCase()} base`;
 
-  // Switching shape resets the layout AND the size to valid defaults for that
-  // shape (square and triangle have different size lists).
-  const selectShape = (v: string) => {
-    setShape(v);
-    // Reset BOTH front and back layout to a valid default for the new shape —
-    // otherwise a back pattern from the old shape (e.g. 'single') no longer
-    // exists and silently falls back to Full print.
-    setPattern(v === 'Triangle' ? 'tri-single' : 'single');
-    setBackPattern(v === 'Triangle' ? 'tri-single' : 'single');
-    setCustomSize(false);
-    setSize(DEFAULT_SIZE[v] ?? SIZES[2].name);
-  };
-
   // Printing requires artwork before checkout — otherwise the order carries a
   // placeholder proof. Waived only when the shopper asked us to design it for
   // them ('help'). Two-sided "different" needs artwork on BOTH faces.
@@ -857,7 +887,7 @@ export default function CustomDesign() {
           <div className="min-w-0 lg:py-2">
             <p className="eyebrow text-brand-700">Custom Print</p>
             <h1 className="mt-1 text-3xl font-extrabold uppercase leading-tight tracking-tight md:text-4xl">
-              Design your bandana
+              Design your {shape} bandana
             </h1>
             <p className="mt-2 text-sm text-muted">
               Made to order · we proof your artwork before anything goes on
@@ -891,8 +921,7 @@ export default function CustomDesign() {
             >
               {step === 0 ? (
                 <BandanaStep
-                  shape={shape}
-                  setShape={selectShape}
+                  sizes={sizeNames}
                   size={size}
                   setSize={setSize}
                   customSize={customSize}

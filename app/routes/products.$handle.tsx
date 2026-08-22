@@ -25,6 +25,7 @@ import {SelectMenu} from '~/components/SelectMenu';
 import {useAside} from '~/components/Aside';
 import {ProductItem} from '~/components/ProductItem';
 import {redirectIfHandleIsLocalized} from '~/lib/redirect';
+import {customWizardPath} from '~/lib/customPrintData';
 import {siteOrigin} from '~/lib/seo';
 
 export const meta: Route.MetaFunction = ({data, matches}) => {
@@ -85,11 +86,12 @@ export const meta: Route.MetaFunction = ({data, matches}) => {
 };
 
 export async function loader(args: Route.LoaderArgs) {
-  // The made-to-order "Design your bandana" product has no real PDP — it's a
-  // variant/price carrier for checkout. Any hit on its product page (shop card,
-  // direct link, search) goes to the custom-print wizard instead.
-  if (args.params.handle === 'design-your-bandana') {
-    return redirect('/custom-print/design');
+  // The made-to-order shape products (square/triangle) have no real PDP — each is
+  // a variant/price carrier for checkout. Any hit on one's product page (shop
+  // card, direct link, search) goes straight to that shape's custom-print wizard.
+  const wizardPath = customWizardPath(args.params.handle ?? '');
+  if (wizardPath) {
+    return redirect(wizardPath);
   }
 
   // Start fetching non-critical data without blocking time to first byte

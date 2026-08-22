@@ -14,6 +14,7 @@ import {
 } from '@shopify/hydrogen';
 import type {HeaderQuery, CartApiQueryFragment} from 'storefrontapi.generated';
 import {useAside} from '~/components/Aside';
+import {SHAPE_ROUTES} from '~/lib/customPrintData';
 
 type HeaderCustomer = {firstName?: string | null; lastName?: string | null};
 
@@ -35,6 +36,10 @@ type NavItem = {
   to: string;
   accent?: boolean;
   children?: {label: string; to: string}[];
+  // Eyebrow above the full-width mega-menu grid (defaults to "Shop by category").
+  menuEyebrow?: string;
+  // Optional bold lead link at the start of the grid (e.g. "All products").
+  leadLabel?: string;
 };
 
 // Collections-driven nav: a single "Shop" whose dropdown auto-lists every
@@ -47,16 +52,28 @@ function buildNav(
     label: c.title,
     to: `/collections/${c.handle}`,
   }));
+  // Each made-to-order shape (from SHAPE_ROUTES) becomes a dropdown item that
+  // links straight into that shape's wizard. Add a shape → it appears here too.
+  const shapeLinks = Object.entries(SHAPE_ROUTES).map(([slug, s]) => ({
+    label: `${s.label} Bandana`,
+    to: `/custom-print/${slug}`,
+  }));
   return [
     {
       title: 'Shop',
       to: '/collections/all',
+      menuEyebrow: 'Shop by category',
+      leadLabel: 'All products',
       children: categories.length ? categories : undefined,
     },
     {
-      // Leads to the made-to-order design wizard.
+      // Clicking the item → the Made to Order collection (card grid, like Shop →
+      // All products); hovering → the shapes. Cards route into each shape wizard.
       title: 'Custom Digital Print',
-      to: '/custom-print/design',
+      to: '/collections/made-to-order-collections',
+      menuEyebrow: 'Design by shape',
+      leadLabel: 'All made-to-order',
+      children: shapeLinks.length ? shapeLinks : undefined,
     },
   ];
 }
@@ -230,13 +247,14 @@ function UtilSignedIn({name}: {name: string | null}) {
 /* Top nav item + mega menu                                                    */
 /* -------------------------------------------------------------------------- */
 function NavTop({item}: {item: NavItem}) {
+  const hasChildren = Boolean(item.children && item.children.length > 0);
   return (
     <div className="group flex items-stretch">
       <NavLink
         to={item.to}
         end
         prefetch="intent"
-        className={({isActive}) =>
+        className={() =>
           `relative flex items-center px-1 text-[15px] font-medium transition-colors ${
             item.accent ? 'text-brand-600' : 'text-ink'
           } after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:origin-center after:scale-x-0 after:bg-brand-500 after:transition-transform group-hover:after:scale-x-100`
@@ -245,24 +263,28 @@ function NavTop({item}: {item: NavItem}) {
         {item.title}
       </NavLink>
 
-      {item.children && item.children.length > 0 && (
+      {/* Full-width mega-menu — shared by Shop and Custom Digital Print. */}
+      {hasChildren && (
         <div className="invisible absolute inset-x-0 top-full opacity-0 transition-[opacity,visibility] duration-150 group-hover:visible group-hover:opacity-100">
           <div className="border-t border-black/10 bg-paper shadow-xl">
             <div className="ui-container grid grid-cols-4 gap-8 py-10">
-              {/* Category links */}
               <div className="col-span-4">
-                <p className="eyebrow mb-5 text-brand-700">Shop by category</p>
+                <p className="eyebrow mb-5 text-brand-700">
+                  {item.menuEyebrow ?? 'Shop by category'}
+                </p>
                 <ul className="grid grid-cols-3 gap-x-8 gap-y-3">
-                  <li>
-                    <Link
-                      to={item.to}
-                      prefetch="intent"
-                      className="text-[15px] font-semibold text-ink transition-colors hover:text-brand-700"
-                    >
-                      All products
-                    </Link>
-                  </li>
-                  {item.children.map((l) => (
+                  {item.leadLabel && (
+                    <li>
+                      <Link
+                        to={item.to}
+                        prefetch="intent"
+                        className="text-[15px] font-semibold text-ink transition-colors hover:text-brand-700"
+                      >
+                        {item.leadLabel}
+                      </Link>
+                    </li>
+                  )}
+                  {item.children!.map((l) => (
                     <li key={l.label}>
                       <Link
                         to={l.to}

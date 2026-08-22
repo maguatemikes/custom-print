@@ -10,6 +10,55 @@ export const SHAPES: Array<{name: string; note: string; soon?: boolean}> = [
   {name: 'Square', note: 'Classic four-sided'},
   {name: 'Triangle', note: 'Pre-folded, pointed'},
 ];
+
+// Each shape is its OWN Shopify product with its own wizard page. The route slug
+// in `/custom-print/<slug>` selects the shape: it fixes the shape label (drives
+// sizes/patterns/pricing) and which product handle the wizard loads. Adding a new
+// shape = create the product + add one entry here (+ a preview if new geometry).
+// Sizes + variant prices come LIVE from the product; tiers/patterns stay in code.
+export type ShapeRoute = {
+  /** Human label used across the wizard (must match SHAPES / tiers / patterns). */
+  label: string;
+  /** Shopify product handle whose Size × Material variants back this shape. */
+  handle: string;
+  /** Default logo layout for this shape (square vs triangle pattern sets). */
+  defaultPattern: string;
+  /** Short blurb for the shape-picker landing. */
+  blurb: string;
+};
+
+export const SHAPE_ROUTES: Record<string, ShapeRoute> = {
+  square: {
+    label: 'Square',
+    handle: 'custom-square-bandana-wizard',
+    defaultPattern: 'single',
+    blurb: 'The classic four-sided bandana — from 14″ up to 35″.',
+  },
+  triangle: {
+    label: 'Triangle',
+    handle: 'custom-triangle-bandana-wizard',
+    defaultPattern: 'tri-single',
+    blurb: 'Pre-folded, pointed cut — sized by leg × long edge × leg.',
+  },
+};
+
+/** Slug (`square`) → shape config, case-insensitive. Null for unknown slugs. */
+export function shapeRouteFor(slug: string | undefined): ShapeRoute | null {
+  return SHAPE_ROUTES[(slug ?? '').toLowerCase()] ?? null;
+}
+
+/**
+ * The custom-print wizard path for a Shopify product handle, or null if the
+ * handle isn't one of the made-to-order shape products. Lets product cards + the
+ * PDP route a shape product straight into its own wizard instead of a generic
+ * product page — the single source of truth for the handle⇄route mapping.
+ */
+export function customWizardPath(handle: string): string | null {
+  for (const slug of Object.keys(SHAPE_ROUTES)) {
+    if (SHAPE_ROUTES[slug].handle === handle) return `/custom-print/${slug}`;
+  }
+  return null;
+}
 export const MATERIALS: Array<{name: string; note: string}> = [
   {name: 'Cotton', note: 'Soft & breathable'},
   {name: 'Polyester', note: 'Quick-dry, vivid print'},
