@@ -1,6 +1,6 @@
 import {useRef} from 'react';
 import type React from 'react';
-import {tiersFor, MIN_QTY, tierFor, money} from '~/lib/customPrintData';
+import {tiersFor, MIN_QTY, money} from '~/lib/customPrintData';
 
 /**
  * "Buy more, save more" tier table — row labels (Qty / Discount / Price-each)
@@ -13,17 +13,26 @@ export function TierTable({
   setQty,
   currencyCode,
   shape,
+  size,
 }: {
   qty: number;
   setQty: (v: number) => void;
   currencyCode: string;
   shape: string;
+  size: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef({down: false, moved: false, startX: 0, scrollLeft: 0});
-  const tiers = tiersFor(shape);
+  const tiers = tiersFor(size, shape);
+  // Discounts are shown off the 1–11 base (tiers[0]); that band is hidden below
+  // by the `min >= MIN_QTY` filter, so it never appears as a buyable tier.
   const anchor = tiers[0]?.each ?? 0;
-  const active = tierFor(qty, shape);
+  // The band the current quantity falls into — found within THIS same `tiers`
+  // array so the reference-equality highlight below matches (tierFor() would
+  // return an element of a freshly-generated array and never be ===).
+  const active =
+    tiers.find((t) => qty >= t.min && (t.max === null || qty <= t.max)) ??
+    tiers[tiers.length - 1];
 
   const onDown = (e: React.PointerEvent) => {
     const el = ref.current;

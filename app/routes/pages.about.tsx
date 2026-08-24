@@ -68,7 +68,7 @@ function AboutHero() {
           fabric, with bulk and wholesale pricing.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link to="/custom-print/design" className="btn btn-brand">
+          <Link to="/collections/made-to-order-collections" className="btn btn-brand">
             Design your bandana
           </Link>
           <Link to="/collections/all" className="btn btn-ghost">
@@ -209,7 +209,7 @@ function AboutCta() {
           wholesale pricing.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
-          <Link to="/custom-print/design" className="btn btn-dark">
+          <Link to="/collections/made-to-order-collections" className="btn btn-dark">
             Design your bandana
           </Link>
         </div>

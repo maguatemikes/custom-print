@@ -187,7 +187,7 @@ function Hero() {
           >
             Shop ready-made
           </Link>
-          <Link to="/custom-print/design" className="btn btn-outline">
+          <Link to="/collections/made-to-order-collections" className="btn btn-outline">
             Design your own
           </Link>
         </div>

@@ -523,33 +523,36 @@ export function DesignStep({
       ) : null}
 
       {/* Conversion nudge — reassures shoppers who don't have finished artwork:
-          free help, same-day start, risk-free (proof before print). */}
-      <div className="rounded-2xl border border-brand-700/15 bg-mint p-5">
-        <div className="flex items-center gap-2">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-5 w-5 shrink-0 text-brand-700"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="m8.5 12 2.5 2.5 4.5-5" />
-          </svg>
-          <h3 className="text-sm font-extrabold uppercase tracking-wide text-ink">
-            Free design help — we start today
-          </h3>
+          free help, same-day start, risk-free (proof before print). Indented to
+          pl-7 so it lines up with the numbered fields' content above it. */}
+      <div className="pl-7">
+        <div className="rounded-2xl border border-brand-700/15 bg-mint p-5">
+          <div className="flex items-center gap-2">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5 shrink-0 text-brand-700"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="m8.5 12 2.5 2.5 4.5-5" />
+            </svg>
+            <h3 className="text-sm font-extrabold uppercase tracking-wide text-ink">
+              Free design help — we start today
+            </h3>
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            No finished artwork? No problem. Place your order and our creative
+            team gets to work the same day — we&apos;ll email a link (also shown
+            on your order confirmation) to share files, talk through ideas, and
+            book a quick call. Nothing is printed until you approve your proof,
+            so there&apos;s zero risk.
+          </p>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          No finished artwork? No problem. Place your order and our creative team
-          gets to work the same day — we&apos;ll email a link (also shown on your
-          order confirmation) to share files, talk through ideas, and book a quick
-          call. Nothing is printed until you approve your proof, so there&apos;s
-          zero risk.
-        </p>
       </div>
     </div>
   );

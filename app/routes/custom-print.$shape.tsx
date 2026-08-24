@@ -6,7 +6,7 @@ import {useAside} from '~/components/Aside';
 import {
   DEFAULT_SIZE,
   MIN_QTY,
-  LIST_PRICE,
+  basePriceFor,
   INTENTS,
   STEPS,
   sizesFor,
@@ -18,6 +18,7 @@ import {
   EMAIL_RE,
   isCustomSizeValid,
   shapeRouteFor,
+  normalizeSize,
 } from '~/lib/customPrintData';
 import {svgToPng, uploadImage} from '~/lib/customPrintProof';
 import {
@@ -181,7 +182,10 @@ export default function CustomDesign() {
   // offers it, else the first available size.
   const initialSize = () => {
     const def = DEFAULT_SIZE[shape];
-    return def && sizeNames.includes(def) ? def : sizeNames[0] ?? '';
+    const match = def
+      ? sizeNames.find((n) => normalizeSize(n) === normalizeSize(def))
+      : undefined;
+    return match ?? sizeNames[0] ?? '';
   };
 
   // Progress is saved PER SHAPE so a square and a triangle in-flight don't
@@ -322,12 +326,19 @@ export default function CustomDesign() {
         }
       }
       // Shape is fixed by the route now, so it's never restored. Only restore a
-      // saved size if the product still offers it (admin may have changed sizes).
-      if (s.size && sizeNames.includes(s.size)) setSize(s.size);
+      // saved size if the product still offers it (admin may have changed sizes),
+      // matched space/case-insensitively like the variant lookup.
+      const savedSize = s.size;
+      const restoredSize = savedSize
+        ? sizeNames.find((n) => normalizeSize(n) === normalizeSize(savedSize))
+        : undefined;
+      if (restoredSize) setSize(restoredSize);
       if (s.material) setMaterial(s.material);
-      if (typeof s.customSize === 'boolean') setCustomSize(s.customSize);
-      if (s.csW) setCsW(s.csW);
-      if (s.csH) setCsH(s.csH);
+      // Custom size is temporarily disabled — never restore a saved custom-size
+      // state (it would show the removed inputs and have no variant to buy).
+      // if (typeof s.customSize === 'boolean') setCustomSize(s.customSize);
+      // if (s.csW) setCsW(s.csW);
+      // if (s.csH) setCsH(s.csH);
       if (s.baseHex) setBaseHex(s.baseHex);
       if (s.printSides) setPrintSides(s.printSides);
       if (s.designMode) setDesignMode(s.designMode);
@@ -611,22 +622,24 @@ export default function CustomDesign() {
   // checkout is silently blocked for that size).
   const sizeOption = customSize ? 'Custom' : size;
   const selectedVariant = useMemo(() => {
-    const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase();
     return (
       variants.find(
-        (v) => norm(v.size) === norm(sizeOption) && v.material === material,
+        (v) =>
+          normalizeSize(v.size) === normalizeSize(sizeOption) &&
+          v.material === material,
       ) ?? null
     );
   }, [variants, sizeOption, material]);
   const variantId = selectedVariant?.id ?? null;
-  // "Buy more, save more" tiered pricing (mirrors the Shopify discount function).
-  const unit = unitPriceFor(qty, shape);
+  // "Buy more, save more" tiered pricing (Jurong cost × 3, per size). Custom
+  // sizes fall back to the shape's anchor size inside the pricing helpers.
+  const unit = unitPriceFor(qty, sizeOption, shape);
   const total = unit * qty;
-  // "You save vs" anchor = the uniform $25 list, matching the Shopify discount
-  // (which reduces from $25), so the storefront and checkout tell the same story.
-  const list = LIST_PRICE;
+  // "You save vs" anchor = the 1–11 base (compare-at) price for this size — the
+  // discounts are measured down from it, matching the Shopify discount function.
+  const list = basePriceFor(sizeOption, shape);
   const saved = (list - unit) * qty;
-  const nt = nextTier(qty, shape);
+  const nt = nextTier(qty, sizeOption, shape);
   const intentLabel = INTENTS.find((i) => i.value === intent)?.label ?? '';
   // Print option drives the flow: blank skips design; two prints both faces.
   const printLabel =
@@ -1011,6 +1024,7 @@ export default function CustomDesign() {
                   setQty={setQty}
                   currencyCode={currencyCode}
                   shape={shape}
+                  size={sizeOption}
                   email={email}
                   setEmail={setEmail}
                   deliveryAck={deliveryAck}
@@ -1210,8 +1224,10 @@ export default function CustomDesign() {
               </p>
             ) : null}
 
-            {/* Quantity/quote gate — explains the disabled "Next" on step 2. */}
-            {step === 2 && !stepValid[2] ? (
+            {/* Quantity/quote gate — explains the disabled "Next" on step 2. The
+                email requirement is shown inline on the field (red + required), so
+                this only covers the terms/delivery acknowledgment. */}
+            {step === 2 && !stepValid[2] && EMAIL_RE.test(email) ? (
               <p className="mt-6 flex items-center gap-1.5 text-sm font-semibold text-orange-600">
                 <svg
                   viewBox="0 0 24 24"
@@ -1225,9 +1241,7 @@ export default function CustomDesign() {
                 >
                   <path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
                 </svg>
-                {!EMAIL_RE.test(email)
-                  ? 'Enter a valid email to continue.'
-                  : 'Accept the delivery time and terms to continue.'}
+                Accept the delivery time and terms to continue.
               </p>
             ) : null}
 

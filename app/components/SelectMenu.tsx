@@ -8,7 +8,7 @@ export type SelectOption = {value: string; label: string; meta?: string};
  * hover/selected states). Closes on outside-click, Escape, or selection;
  * supports ↑/↓/Enter/Home/End keyboard navigation.
  *
- * Shared by the PDP "Personalize me" flow and the /custom-print/design wizard.
+ * Shared by the PDP "Personalize me" flow and the custom-print wizard.
  */
 export function SelectMenu({
   value,

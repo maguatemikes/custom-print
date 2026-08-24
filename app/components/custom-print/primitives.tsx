@@ -73,11 +73,14 @@ export function Field({
   n,
   title,
   hint,
+  required = false,
   children,
 }: {
   n?: number;
   title: string;
   hint?: string;
+  /** Renders a red asterisk after the title to flag a required field. */
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -89,7 +92,15 @@ export function Field({
           </span>
         ) : null}
         <div>
-          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          <h3 className="text-sm font-semibold text-ink">
+            {title}
+            {required ? (
+              <span className="text-red-600" aria-hidden="true">
+                {' '}
+                *
+              </span>
+            ) : null}
+          </h3>
           {hint ? <p className="text-xs text-muted">{hint}</p> : null}
         </div>
       </div>

@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {MIN_QTY} from '~/lib/customPrintData';
+import {MIN_QTY, EMAIL_RE} from '~/lib/customPrintData';
 import {Field} from './primitives';
 import {TierTable} from './TierTable';
 
@@ -8,6 +8,7 @@ export function QuantityStep({
   setQty,
   currencyCode,
   shape,
+  size,
   email,
   setEmail,
   deliveryAck,
@@ -19,6 +20,7 @@ export function QuantityStep({
   setQty: (v: number) => void;
   currencyCode: string;
   shape: string;
+  size: string;
   email: string;
   setEmail: (v: string) => void;
   deliveryAck: boolean;
@@ -36,6 +38,14 @@ export function QuantityStep({
   }, [qty]);
   const belowMin = qtyInput !== '' && Number(qtyInput) < MIN_QTY;
 
+  // Inline email validation: the field goes red + shows an error when it isn't a
+  // valid address AND the shopper has either touched it (blurred) or ticked an
+  // acknowledgment — so a stuck shopper sees the email is the blocker, on the
+  // field itself, instead of a separate warning below the step.
+  const [emailTouched, setEmailTouched] = useState(false);
+  const emailError =
+    !EMAIL_RE.test(email) && (emailTouched || deliveryAck || terms);
+
   return (
     <div>
       <Field
@@ -48,6 +58,7 @@ export function QuantityStep({
           setQty={setQty}
           currencyCode={currencyCode}
           shape={shape}
+          size={size}
         />
         <div className="mt-3 flex items-center gap-2">
           <span className="text-sm text-muted">Or enter a quantity</span>
@@ -86,52 +97,72 @@ export function QuantityStep({
       <Field
         n={2}
         title="Email for your quote"
+        required
         hint="We'll send your quote and design-intake link here."
       >
         <input
           type="email"
+          required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onBlur={() => setEmailTouched(true)}
           placeholder="you@company.com"
           aria-label="Email"
-          className="h-11 w-full rounded-xl border border-black/15 px-4 text-sm focus:border-brand-500 focus:outline-none"
+          aria-required="true"
+          aria-invalid={emailError}
+          className={`h-11 w-full rounded-xl border px-4 text-sm focus:outline-none ${
+            emailError
+              ? 'border-red-500 focus:border-red-500'
+              : 'border-black/15 focus:border-brand-500'
+          }`}
         />
+        {emailError ? (
+          <p className="mt-1.5 text-xs font-semibold text-red-600">
+            Enter a valid email address.
+          </p>
+        ) : null}
       </Field>
 
-      <div className="rounded-2xl border border-black/10 bg-mint/60 p-5">
-        {/* Info — the context */}
-        <h3 className="eyebrow text-brand-700">Delivery time</h3>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          Standard production &amp; delivery is roughly 20–30 business days after
-          your design is approved. Rush options may be available — ask our team.
-        </p>
+      {/* Indented to pl-7 so the card lines up with the numbered fields' content. */}
+      <div className="pl-7">
+        <div className="rounded-2xl border border-black/10 bg-mint/60 p-5">
+          {/* Info — the context */}
+          <h3 className="eyebrow text-brand-700">Delivery time</h3>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Standard production &amp; delivery is roughly 20–30 business days
+            after your design is approved. Rush options may be available — ask
+            our team.
+          </p>
 
-        {/* Separate the context from the actions */}
-        <div className="my-4 border-t border-black/10" />
+          {/* Separate the context from the actions */}
+          <div className="my-4 border-t border-black/10" />
 
-        {/* Acknowledgments — the actions, grouped and evenly spaced */}
-        <div className="space-y-3">
-          <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-ink">
-            <input
-              type="checkbox"
-              checked={deliveryAck}
-              onChange={(e) => setDeliveryAck(e.target.checked)}
-              className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-brand-600"
-            />
-            <span>I understand and acknowledge the estimated delivery time.</span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-ink">
-            <input
-              type="checkbox"
-              checked={terms}
-              onChange={(e) => setTerms(e.target.checked)}
-              className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-brand-600"
-            />
-            <span>
-              I agree to the Terms &amp; Conditions and understand custom orders
-              are non-refundable once production begins.
-            </span>
-          </label>
+          {/* Acknowledgments — the actions, grouped and evenly spaced */}
+          <div className="space-y-3">
+            <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-ink">
+              <input
+                type="checkbox"
+                checked={deliveryAck}
+                onChange={(e) => setDeliveryAck(e.target.checked)}
+                className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-brand-600"
+              />
+              <span>
+                I understand and acknowledge the estimated delivery time.
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-ink">
+              <input
+                type="checkbox"
+                checked={terms}
+                onChange={(e) => setTerms(e.target.checked)}
+                className="mt-0.5 h-[18px] w-[18px] shrink-0 accent-brand-600"
+              />
+              <span>
+                I agree to the Terms &amp; Conditions and understand custom orders
+                are non-refundable once production begins.
+              </span>
+            </label>
+          </div>
         </div>
       </div>
     </div>

@@ -189,10 +189,10 @@ export function QuoteStep({
           )
         ) : (
           <div className="rounded-xl border border-dashed border-black/20 bg-mint p-4 text-center text-sm text-muted">
-            The made-to-order custom product isn&apos;t set up in Shopify yet.
-            Create a <code className="font-semibold">custom-bandana</code>{' '}
-            product (inventory off) and publish it to the Headless channel to
-            enable checkout.
+            The{' '}
+            <span className="font-semibold">Custom {shape} Bandana</span>{' '}
+            product isn&apos;t set up in Shopify yet. Publish it to the Headless
+            channel (inventory off) to enable checkout.
           </div>
         )}
         <p className="mt-2 text-center text-xs text-muted">

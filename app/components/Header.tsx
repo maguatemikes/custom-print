@@ -139,10 +139,25 @@ function AnnouncementBar() {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setCollapsed(window.scrollY > 40);
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        // Hysteresis: collapse past 60px, expand only back under 20px. The
+        // 20–60px dead-band stops scroll jitter (and the layout shift the
+        // collapse itself causes) from rapidly toggling the bar mid-animation.
+        setCollapsed((prev) =>
+          prev ? window.scrollY > 20 : window.scrollY > 60,
+        );
+      });
+    };
     onScroll();
     window.addEventListener('scroll', onScroll, {passive: true});
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   return (

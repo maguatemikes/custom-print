@@ -75,7 +75,7 @@ type Model = 'hex' | 'rgb' | 'cmyk' | 'pantone';
  * Styled to the design system (no native popup); reports up via onChange(hex).
  * Self-contained: owns its own h/s/v state.
  *
- * Shared by the PDP "Personalize me" flow and the /custom-print/design wizard
+ * Shared by the PDP "Personalize me" flow and the custom-print wizard
  * so both use an identical control.
  */
 export function ColorSpectrum({

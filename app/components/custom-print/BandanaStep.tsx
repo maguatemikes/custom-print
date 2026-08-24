@@ -162,7 +162,9 @@ export function BandanaStep({
           }}
           options={[
             ...sizes.map((name) => ({value: name, label: `${name} in`})),
-            {value: 'custom', label: 'Custom size — enter your own'},
+            // Custom size temporarily disabled (no `Custom` variant in Shopify).
+            // Re-add this option to bring the enter-your-own-dimensions flow back:
+            // {value: 'custom', label: 'Custom size — enter your own'},
           ]}
         />
         {customSize ? (
