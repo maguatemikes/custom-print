@@ -1,24 +1,13 @@
 import type React from 'react';
 import {ColorSpectrum} from '~/components/ColorSpectrum';
 import {SelectMenu} from '~/components/SelectMenu';
-import {
-  MATERIALS,
-  isCustomSizeValid,
-  MIN_CUSTOM_IN,
-  MAX_CUSTOM_IN,
-} from '~/lib/customPrintData';
+import {MATERIALS} from '~/lib/customPrintData';
 import {Field} from './primitives';
 
 export function BandanaStep({
   sizes,
   size,
   setSize,
-  customSize,
-  setCustomSize,
-  csW,
-  setCsW,
-  csH,
-  setCsH,
   material,
   setMaterial,
   baseHex,
@@ -30,12 +19,6 @@ export function BandanaStep({
   sizes: string[];
   size: string;
   setSize: (v: string) => void;
-  customSize: boolean;
-  setCustomSize: (v: boolean) => void;
-  csW: string;
-  setCsW: (v: string) => void;
-  csH: string;
-  setCsH: (v: string) => void;
   material: string;
   setMaterial: (v: string) => void;
   baseHex: string;
@@ -50,7 +33,7 @@ export function BandanaStep({
   }> = [
     {
       value: 'one',
-      label: 'Print 1 side',
+      label: 'Single side print',
       // Framed artwork = printed image on one face.
       icon: (
         <svg
@@ -71,7 +54,7 @@ export function BandanaStep({
     },
     {
       value: 'two',
-      label: 'Print 2 sides',
+      label: 'Double sided print',
       // Two stacked panels = front + back.
       icon: (
         <svg
@@ -91,7 +74,7 @@ export function BandanaStep({
     },
     {
       value: 'blank',
-      label: 'No print',
+      label: 'No print, solid colour',
       // Empty panel, crossed = plain fabric, no artwork.
       icon: (
         <svg
@@ -151,59 +134,10 @@ export function BandanaStep({
       <Field n={3} title="Bandana size" hint="Pick a finished size.">
         <SelectMenu
           ariaLabel="Bandana size"
-          value={customSize ? 'custom' : size}
-          onChange={(v) => {
-            if (v === 'custom') {
-              setCustomSize(true);
-            } else {
-              setCustomSize(false);
-              setSize(v);
-            }
-          }}
-          options={[
-            ...sizes.map((name) => ({value: name, label: `${name} in`})),
-            // Custom size temporarily disabled (no `Custom` variant in Shopify).
-            // Re-add this option to bring the enter-your-own-dimensions flow back:
-            // {value: 'custom', label: 'Custom size — enter your own'},
-          ]}
+          value={size}
+          onChange={setSize}
+          options={sizes.map((name) => ({value: name, label: `${name} in`}))}
         />
-        {customSize ? (
-          <>
-            <div className="mt-2 flex items-center gap-2">
-              <input
-                type="number"
-                min={MIN_CUSTOM_IN}
-                max={MAX_CUSTOM_IN}
-                placeholder="W"
-                value={csW}
-                onChange={(e) => setCsW(e.target.value)}
-                aria-label="Custom width in inches"
-                className="h-11 w-20 rounded-lg border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
-              />
-              <span className="text-muted">×</span>
-              <input
-                type="number"
-                min={MIN_CUSTOM_IN}
-                max={MAX_CUSTOM_IN}
-                placeholder="H"
-                value={csH}
-                onChange={(e) => setCsH(e.target.value)}
-                aria-label="Custom height in inches"
-                className="h-11 w-20 rounded-lg border border-black/15 px-3 text-sm focus:border-brand-500 focus:outline-none"
-              />
-              <span className="text-sm text-muted">inches</span>
-            </div>
-            {(!csW && !csH) || isCustomSizeValid(csW, csH) ? (
-              <p className="mt-1.5 text-xs text-muted">
-                Between {MIN_CUSTOM_IN} and {MAX_CUSTOM_IN} inches each.
-              </p>
-            ) : (
-              <p className="mt-1.5 text-sm font-semibold text-red-600">
-                Width and height must be {MIN_CUSTOM_IN}–{MAX_CUSTOM_IN} inches.
-              </p>
-            )}
-          </>
-        ) : null}
       </Field>
 
       <Field n={4} title="Material" hint="Choose the fabric we print on.">

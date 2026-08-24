@@ -263,9 +263,9 @@ function BandanaPreviewImpl({
               )
             ) : (
               /* Logo layout — uploaded artwork or a placeholder (spaced) */
-              spacedMarks.map((m, i) => (
+              spacedMarks.map((m) => (
                 <g
-                  key={i}
+                  key={`${m.x}-${m.y}-${m.rot}`}
                   transform={`translate(${m.x * 2.4} ${m.y * 2.4}) rotate(${m.rot})`}
                 >
                   {logoPreview ? (

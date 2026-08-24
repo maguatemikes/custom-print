@@ -27,7 +27,7 @@ export const SHAPE_ROUTES: Record<string, ShapeRoute> = {
     label: 'Square',
     handle: 'custom-square-bandana-wizard',
     defaultPattern: 'single',
-    blurb: 'The classic four-sided bandana — from 14″ up to 35″.',
+    blurb: 'The classic four-sided bandana — from 14″ up to 27″.',
   },
   triangle: {
     label: 'Triangle',
@@ -95,25 +95,6 @@ export const DEFAULT_SIZE: Record<string, string> = {
 
 export const MIN_QTY = 12;
 
-// Custom (enter-your-own) bandana dimensions, in inches. Enforced in the wizard
-// so 0/negative/out-of-range values can't pass the step and reach the cart.
-export const MIN_CUSTOM_IN = 4;
-export const MAX_CUSTOM_IN = 80;
-
-/** True only when both custom dimensions are real numbers within the allowed range. */
-export function isCustomSizeValid(w: string, h: string): boolean {
-  const wn = Number(w);
-  const hn = Number(h);
-  return (
-    Number.isFinite(wn) &&
-    Number.isFinite(hn) &&
-    wn >= MIN_CUSTOM_IN &&
-    wn <= MAX_CUSTOM_IN &&
-    hn >= MIN_CUSTOM_IN &&
-    hn <= MAX_CUSTOM_IN
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /* Tiered pricing — derived from the Jurong supplier cost sheet × MARKUP       */
 /*                                                                            */
@@ -130,8 +111,6 @@ export const MARKUP = 3;
 
 // Jurong fabric EXW cost per piece (USD), by size, at each quoted quantity
 // break. Source: Jurong Rongguang price sheet (Cotton 90gsm, one colour).
-// NOTE: 35×35 has no Jurong quote — ESTIMATED from 27×27 by area ratio; replace
-// with a real quote when available.
 export const JURONG_COST: Record<string, Record<number, number>> = {
   // Square
   '14 x 14': {72: 0.99, 144: 0.79, 300: 0.55, 600: 0.45, 1200: 0.42, 3600: 0.32, 6000: 0.3, 12000: 0.27},

@@ -16,7 +16,6 @@ import {
   money,
   STORAGE_KEY,
   EMAIL_RE,
-  isCustomSizeValid,
   shapeRouteFor,
   normalizeSize,
 } from '~/lib/customPrintData';
@@ -197,9 +196,6 @@ export default function CustomDesign() {
   // price shows immediately (lower friction + a default-anchoring nudge). Shape
   // is fixed by the route (the product you're on), so it isn't selectable here.
   const [size, setSize] = useState<string>(initialSize);
-  const [customSize, setCustomSize] = useState(false);
-  const [csW, setCsW] = useState('');
-  const [csH, setCsH] = useState('');
   const [material, setMaterial] = useState<string>('Cotton');
   const [baseHex, setBaseHex] = useState('#e23b3b');
   // Print option — the root choice that reshapes the wizard: a blank (solid
@@ -287,9 +283,6 @@ export default function CustomDesign() {
         shape: string;
         size: string;
         material: string;
-        customSize: boolean;
-        csW: string;
-        csH: string;
         baseHex: string;
         printSides: 'blank' | 'one' | 'two';
         designMode: 'same' | 'different';
@@ -334,11 +327,6 @@ export default function CustomDesign() {
         : undefined;
       if (restoredSize) setSize(restoredSize);
       if (s.material) setMaterial(s.material);
-      // Custom size is temporarily disabled — never restore a saved custom-size
-      // state (it would show the removed inputs and have no variant to buy).
-      // if (typeof s.customSize === 'boolean') setCustomSize(s.customSize);
-      // if (s.csW) setCsW(s.csW);
-      // if (s.csH) setCsH(s.csH);
       if (s.baseHex) setBaseHex(s.baseHex);
       if (s.printSides) setPrintSides(s.printSides);
       if (s.designMode) setDesignMode(s.designMode);
@@ -363,6 +351,9 @@ export default function CustomDesign() {
       /* ignore corrupt state */
     }
     setHydrated(true);
+    // Restore runs once on mount only; sizeNames/storageKey are read as initial
+    // values on purpose (re-running would re-restore and clobber live edits).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist progress (only after hydration, so defaults never clobber a save).
@@ -377,9 +368,6 @@ export default function CustomDesign() {
           JSON.stringify({
             step,
             size,
-            customSize,
-            csW,
-            csH,
             material,
             baseHex,
             qty,
@@ -412,9 +400,6 @@ export default function CustomDesign() {
     storageKey,
     step,
     size,
-    customSize,
-    csW,
-    csH,
     material,
     baseHex,
     qty,
@@ -564,7 +549,8 @@ export default function CustomDesign() {
       return null;
     };
 
-    (async () => {
+    // Fire-and-forget: teardown is handled by the `cancelled` flag + cleanup.
+    void (async () => {
       // Front + back proofs AND the original artwork upload concurrently.
       const [frontUrl, backUrl, artUrl, backArtUrl] = await Promise.all([
         rasterizeAndUpload('front-proof', 'design-front.png'),
@@ -605,22 +591,20 @@ export default function CustomDesign() {
       cancelled = true;
     };
     // Regenerate only when the design actually changes (proofSignature), on
-    // Retry, or on entering the Quote step — NOT on mere back-and-forth.
+    // Retry, or on entering the Quote step — NOT on mere back-and-forth. The
+    // individual design fields are intentionally excluded (proofSignature covers
+    // them) so editing doesn't re-upload until re-entering Quote.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, proofSignature, retryNonce, isBlank, isDiff]);
 
-  const sizeReady = customSize ? isCustomSizeValid(csW, csH) : Boolean(size);
-  const sizeDisplay = customSize
-    ? `${csW || '?'} × ${csH || '?'} in`
-    : size
-      ? `${size} in`
-      : '';
+  const sizeReady = Boolean(size);
+  const sizeDisplay = size ? `${size} in` : '';
 
-  // Match the chosen Size + Material to a real Shopify variant (custom → the
-  // "Custom" size variant). Price + checkout come from that variant. Compare
-  // sizes space-/case-insensitively so a Shopify typo like "22x30x22" vs the
-  // wizard's "22 x 30 x 22" still matches (otherwise variantId is null →
-  // checkout is silently blocked for that size).
-  const sizeOption = customSize ? 'Custom' : size;
+  // Match the chosen Size + Material to a real Shopify variant. Price + checkout
+  // come from that variant. Compare sizes space-/case-insensitively so a Shopify
+  // typo like "22x30x22" vs the wizard's "22 x 30 x 22" still matches (otherwise
+  // variantId is null → checkout is silently blocked for that size).
+  const sizeOption = size;
   const selectedVariant = useMemo(() => {
     return (
       variants.find(
@@ -631,8 +615,7 @@ export default function CustomDesign() {
     );
   }, [variants, sizeOption, material]);
   const variantId = selectedVariant?.id ?? null;
-  // "Buy more, save more" tiered pricing (Jurong cost × 3, per size). Custom
-  // sizes fall back to the shape's anchor size inside the pricing helpers.
+  // "Buy more, save more" tiered pricing (Jurong cost × 3, per size).
   const unit = unitPriceFor(qty, sizeOption, shape);
   const total = unit * qty;
   // "You save vs" anchor = the 1–11 base (compare-at) price for this size — the
@@ -644,10 +627,10 @@ export default function CustomDesign() {
   // Print option drives the flow: blank skips design; two prints both faces.
   const printLabel =
     printSides === 'blank'
-      ? 'Blank — solid colour (no print)'
+      ? 'No print, solid colour'
       : printSides === 'two'
-        ? 'Printed both sides'
-        : 'Printed one side';
+        ? 'Double sided print'
+        : 'Single side print';
   const previewBadge =
     printSides === 'blank'
       ? 'Solid colour · no print'
@@ -705,7 +688,6 @@ export default function CustomDesign() {
   const pvSeamless = Boolean(dvActivePattern.seamless);
 
   const baseColor = baseHex;
-  const baseLabel = `${baseHex.toUpperCase()} base`;
 
   // Printing requires artwork before checkout — otherwise the order carries a
   // placeholder proof. Waived only when the shopper asked us to design it for
@@ -937,12 +919,6 @@ export default function CustomDesign() {
                   sizes={sizeNames}
                   size={size}
                   setSize={setSize}
-                  customSize={customSize}
-                  setCustomSize={setCustomSize}
-                  csW={csW}
-                  setCsW={setCsW}
-                  csH={csH}
-                  setCsH={setCsH}
                   material={material}
                   setMaterial={setMaterial}
                   baseHex={baseHex}
@@ -1039,7 +1015,6 @@ export default function CustomDesign() {
                   shape={shape}
                   size={sizeDisplay}
                   material={material}
-                  baseLabel={baseLabel}
                   qty={qty}
                   list={list}
                   unit={unit}
@@ -1276,7 +1251,7 @@ export default function CustomDesign() {
         </div>
       </div>
     </div>
-      <CustomPrintInfo />
+      <CustomPrintInfo productHandle={productHandle} />
     </>
   );
 }

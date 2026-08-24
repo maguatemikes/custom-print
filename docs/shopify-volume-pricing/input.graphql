@@ -1,0 +1,30 @@
+# Input query for the product-discount function.
+# Pulls the pricing metafield once + the per-line product handle, size, price, qty.
+query Input {
+  shop {
+    metafield(namespace: "custom", key: "volume_pricing") {
+      value
+    }
+  }
+  cart {
+    lines {
+      id
+      quantity
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          price {
+            amount
+          }
+          selectedOptions {
+            name
+            value
+          }
+          product {
+            handle
+          }
+        }
+      }
+    }
+  }
+}

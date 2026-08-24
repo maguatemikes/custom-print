@@ -44,9 +44,9 @@ export function PatternThumb({
         {triangle ? (
           <path d="M-87.5 -87.5 L-87.5 87.5 L87.5 87.5 Z" fill={triFill} />
         ) : null}
-        {cells.map(({cx, cy}, i) => (
+        {cells.map(({cx, cy}) => (
           <rect
-            key={i}
+            key={`${cx}-${cy}`}
             x={cx - cell / 2}
             y={cy - cell / 2}
             width={cell}
@@ -69,9 +69,9 @@ export function PatternThumb({
       {triangle ? (
         <path d="M-87.5 -87.5 L-87.5 87.5 L87.5 87.5 Z" fill={triFill} />
       ) : null}
-      {marks.map((m, i) => (
+      {marks.map((m) => (
         <rect
-          key={i}
+          key={`${m.x}-${m.y}-${m.rot}`}
           x={-r}
           y={-r}
           width={dot}

@@ -7,7 +7,7 @@ import type {
   RelatedProductFragment,
 } from 'storefrontapi.generated';
 import {useVariantUrl} from '~/lib/variants';
-import {customWizardPath} from '~/lib/customPrintData';
+import {customWizardPath, MIN_QTY} from '~/lib/customPrintData';
 
 export function ProductItem({
   product,
@@ -67,8 +67,13 @@ export function ProductItem({
         {product.vendor ? (
           <p className="text-xs text-muted">{product.vendor}</p>
         ) : null}
-        <div className="mt-1 text-sm font-bold text-brand-700">
-          <Money data={product.priceRange.minVariantPrice} />
+        <div className="mt-1 flex items-baseline justify-between gap-2">
+          <span className="text-sm font-bold text-brand-700">
+            <Money data={product.priceRange.minVariantPrice} />
+          </span>
+          <span className="text-xs font-semibold text-muted">
+            Minimum {MIN_QTY} pcs
+          </span>
         </div>
       </div>
     </Link>

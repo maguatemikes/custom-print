@@ -6,7 +6,6 @@ export function QuoteStep({
   shape,
   size,
   material,
-  baseLabel,
   qty,
   list,
   unit,
@@ -26,7 +25,6 @@ export function QuoteStep({
   shape: string;
   size: string;
   material: string;
-  baseLabel: string;
   qty: number;
   list: number;
   unit: number;

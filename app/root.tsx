@@ -229,7 +229,7 @@ export function ErrorBoundary() {
           to="/"
           className="mb-10 text-xl font-extrabold lowercase tracking-tight text-ink"
         >
-          berlin<span className="text-brand-600">houseware</span>
+          custom<span className="text-brand-600">bandanas</span>
         </Link>
 
         <span className="eyebrow text-brand-700">Error {errorStatus}</span>

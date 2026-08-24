@@ -1,6 +1,12 @@
 import {useEffect, useRef, useState} from 'react';
 
-export type SelectOption = {value: string; label: string; meta?: string};
+export type SelectOption = {
+  value: string;
+  label: string;
+  meta?: string;
+  /** Non-selectable option (e.g. "coming soon") — shown greyed, skipped in nav. */
+  disabled?: boolean;
+};
 
 /**
  * Accessible custom dropdown (listbox) — replaces the native <select> so the
@@ -26,9 +32,26 @@ export function SelectMenu({
   const ref = useRef<HTMLDivElement>(null);
   const current = options.find((o) => o.value === value);
 
+  // First selectable index at/after `from` moving in `dir` (+1/-1), skipping
+  // disabled options; returns `from` if every other option is disabled.
+  const step = (from: number, dir: number) => {
+    const n = options.length;
+    let i = from;
+    for (let k = 0; k < n; k++) {
+      i = (i + dir + n) % n;
+      if (!options[i]?.disabled) return i;
+    }
+    return from;
+  };
+  const firstEnabled = () => {
+    const i = options.findIndex((o) => !o.disabled);
+    return i < 0 ? 0 : i;
+  };
+
   useEffect(() => {
     if (!open) return;
-    setActive(Math.max(0, options.findIndex((o) => o.value === value)));
+    const sel = options.findIndex((o) => o.value === value);
+    setActive(sel >= 0 && !options[sel].disabled ? sel : firstEnabled());
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
@@ -36,10 +59,13 @@ export function SelectMenu({
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, options, value]);
 
   const choose = (i: number) => {
-    onChange(options[i].value);
+    const o = options[i];
+    if (!o || o.disabled) return;
+    onChange(o.value);
     setOpen(false);
   };
 
@@ -56,16 +82,16 @@ export function SelectMenu({
     if (!open) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActive((i) => (i + 1) % options.length);
+      setActive((i) => step(i, 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((i) => (i - 1 + options.length) % options.length);
+      setActive((i) => step(i, -1));
     } else if (e.key === 'Home') {
       e.preventDefault();
-      setActive(0);
+      setActive(firstEnabled());
     } else if (e.key === 'End') {
       e.preventDefault();
-      setActive(options.length - 1);
+      setActive(step(0, -1));
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       choose(active);
@@ -113,17 +139,25 @@ export function SelectMenu({
         >
           {options.map((o, i) => {
             const selected = o.value === value;
-            const highlighted = i === active;
+            const highlighted = i === active && !o.disabled;
             return (
+              // Keyboard operation lives on the listbox trigger button's
+              // onKeyDown (↑/↓/Enter/Esc); options are pointer targets only.
+              // eslint-disable-next-line jsx-a11y/click-events-have-key-events
               <li
                 key={o.value}
                 role="option"
                 aria-selected={selected}
-                onMouseEnter={() => setActive(i)}
+                aria-disabled={o.disabled || undefined}
+                onMouseEnter={() => !o.disabled && setActive(i)}
                 onClick={() => choose(i)}
-                className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-                  highlighted ? 'bg-mint' : ''
-                } ${selected ? 'font-semibold text-ink' : 'text-ink'}`}
+                className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
+                  o.disabled
+                    ? 'cursor-not-allowed text-muted opacity-60'
+                    : `cursor-pointer text-ink ${highlighted ? 'bg-mint' : ''} ${
+                        selected ? 'font-semibold' : ''
+                      }`
+                }`}
               >
                 <span>
                   {o.label}

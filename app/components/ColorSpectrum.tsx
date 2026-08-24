@@ -43,6 +43,23 @@ export function hexToRgb(hex: string): [number, number, number] | null {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/**
+ * Normalize a pasted/typed hex to a full `#rrggbb`, or null if it isn't one.
+ * Accepts 3- or 6-digit, with or without the leading `#` (e.g. `0f0`, `#1E90FF`).
+ * Used for the paste/blur commit so shorthand hex applies too.
+ */
+export function normalizeHex(raw: string): string | null {
+  const t = raw.trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(t)) {
+    return `#${t
+      .split('')
+      .map((c) => c + c)
+      .join('')}`.toLowerCase();
+  }
+  if (/^[0-9a-f]{6}$/i.test(t)) return `#${t}`.toLowerCase();
+  return null;
+}
+
 export function rgbToHsv([r, g, b]: [
   number,
   number,
@@ -292,6 +309,30 @@ export function ColorSpectrum({
               const t = e.target.value;
               setHexText(t);
               applyHex(t);
+            }}
+            onPaste={(e) => {
+              // Apply a pasted hex directly — including 3-digit shorthand
+              // (#0f0) that onChange's 6-digit parse would miss.
+              const norm = normalizeHex(e.clipboardData.getData('text'));
+              if (norm) {
+                e.preventDefault();
+                setHexText(norm);
+                applyHex(norm);
+              }
+            }}
+            onBlur={() => {
+              // Commit shorthand / stray input on blur; revert to the current
+              // colour if what's left in the box isn't a valid hex.
+              const norm = normalizeHex(hexText);
+              if (norm) {
+                setHexText(norm);
+                applyHex(norm);
+              } else {
+                setHexText(hex);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
             }}
             aria-label="Hex colour value"
             spellCheck={false}

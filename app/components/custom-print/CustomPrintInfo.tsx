@@ -3,8 +3,9 @@ import {useFetcher} from 'react-router';
 import {MIN_QTY} from '~/lib/customPrintData';
 import {EMPTY_REVIEWS, type JudgemeReviews} from '~/lib/judgeme';
 
-/* On-site "Write a review" form → posts to /api/reviews (server → Judge.me). */
-function WriteReview() {
+/* On-site "Write a review" form → posts to /api/reviews (server → Judge.me).
+   `productHandle` attaches the review to this shape's product. */
+function WriteReview({productHandle}: {productHandle: string}) {
   const fetcher = useFetcher<{ok?: boolean; error?: string}>();
   const [open, setOpen] = useState(false);
   const [rating, setRating] = useState(0);
@@ -54,6 +55,7 @@ function WriteReview() {
         action="/api/reviews"
         className="space-y-3 text-left"
       >
+      <input type="hidden" name="handle" value={productHandle} />
       <div className="flex items-center gap-2">
         <span className="text-sm font-semibold text-ink">Your rating</span>
         <div className="flex gap-0.5">
@@ -124,6 +126,8 @@ function Stars({value, className = 'h-4 w-4'}: {value: number; className?: strin
     <span className="inline-flex gap-0.5 text-amber-400" aria-hidden="true">
       {Array.from({length: 5}).map((_, i) => (
         <svg
+          // Fixed 5-star row — never reordered, so the index is a stable key.
+          // eslint-disable-next-line react/no-array-index-key
           key={i}
           viewBox="0 0 24 24"
           className={className}
@@ -144,18 +148,22 @@ function Stars({value, className = 'h-4 w-4'}: {value: number; className?: strin
  * service plus a Reviews tab (real Judge.me data via the loader). Self-contained
  * except for the `reviews` prop; does not touch the wizard.
  */
-export function CustomPrintInfo() {
+export function CustomPrintInfo({productHandle}: {productHandle: string}) {
   const [tab, setTab] = useState<'about' | 'reviews'>('about');
 
-  // Reviews are fetched lazily (NOT in the route loader) so the two Judge.me API
+  // Reviews are fetched lazily (NOT in the route loader) so the Judge.me API
   // calls never delay the wizard's render — and only the FIRST time the Reviews
   // tab is opened, so shoppers who never look at reviews trigger zero API calls.
+  // Fetched PER PRODUCT (this shape's handle) so square/triangle keep their own.
   const reviewsFetcher = useFetcher<JudgemeReviews>();
   const reviewsRequested = useRef(false);
   useEffect(() => {
     if (tab === 'reviews' && !reviewsRequested.current) {
       reviewsRequested.current = true;
-      reviewsFetcher.load('/api/reviews');
+      // Fire-and-forget: the fetcher tracks its own state; nothing to await here.
+      void reviewsFetcher.load(
+        `/api/reviews?handle=${encodeURIComponent(productHandle)}`,
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
@@ -173,7 +181,7 @@ export function CustomPrintInfo() {
   const specs: Array<[string, string]> = [
     ['Minimum order', `${MIN_QTY} pieces — no maximum`],
     ['Shapes', 'Square or pre-folded triangle'],
-    ['Sizes', '14–35 in finished (custom available)'],
+    ['Sizes', '14–27 in finished'],
     ['Fabric', 'Cotton or quick-dry polyester'],
     ['Printing', 'Full-colour digital — no setup fees'],
     ['Print options', 'One side, both sides, or seamless'],
@@ -191,7 +199,7 @@ export function CustomPrintInfo() {
     },
     {
       title: 'Shapes, sizes and fabric',
-      body: 'Choose a classic four-sided square or a pre-folded triangle, each offered in a range of finished sizes measured in inches — from compact 14-inch pieces up to oversized 35-inch ones, with matching triangle cuts. Print on soft, breathable cotton for an everyday feel, or quick-dry polyester for the most vivid colour. Need a size that isn’t listed? Enter your own custom dimensions.',
+      body: 'Choose a classic four-sided square or a pre-folded triangle, each offered in a range of finished sizes measured in inches — from compact 14-inch pieces up to roomy 27-inch ones, with matching triangle cuts. Print on soft, breathable cotton for an everyday feel, or quick-dry polyester for the most vivid colour.',
       icon: (
         <>
           <rect x="3" y="13" width="8" height="8" rx="1.5" />
@@ -350,7 +358,7 @@ export function CustomPrintInfo() {
               </p>
             </div>
             <div className="mx-auto mt-6 max-w-md">
-              <WriteReview />
+              <WriteReview productHandle={productHandle} />
             </div>
           </div>
         ) : (
@@ -388,7 +396,7 @@ export function CustomPrintInfo() {
               </div>
 
               <div className="mt-6">
-                <WriteReview />
+                <WriteReview productHandle={productHandle} />
               </div>
             </div>
 
