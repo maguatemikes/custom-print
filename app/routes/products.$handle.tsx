@@ -1,5 +1,5 @@
-import {Suspense, useEffect, useRef, useState} from 'react';
-import {Await, useLoaderData, redirect} from 'react-router';
+import {Suspense, useRef, useState} from 'react';
+import {Await, useLoaderData, redirect, useFetcher} from 'react-router';
 import type {Route} from './+types/products.$handle';
 import {
   getSelectedProductOptions,
@@ -9,6 +9,7 @@ import {
   getAdjacentAndFirstAvailableVariants,
   useSelectedOptionInUrlParam,
   Money,
+  CartForm,
 } from '@shopify/hydrogen';
 import type {MoneyV2} from '@shopify/hydrogen/storefront-api-types';
 import type {
@@ -18,14 +19,15 @@ import type {
 import {ProductPrice} from '~/components/ProductPrice';
 import {ProductGallery} from '~/components/ProductGallery';
 import {ProductForm} from '~/components/ProductForm';
-import {AddToCartButton} from '~/components/AddToCartButton';
 import {MIN_ORDER_QTY} from '~/lib/cart';
 import {ColorSpectrum} from '~/components/ColorSpectrum';
 import {SelectMenu} from '~/components/SelectMenu';
 import {useAside} from '~/components/Aside';
 import {ProductItem} from '~/components/ProductItem';
+import {ProductInfo} from '~/components/ProductInfo';
 import {redirectIfHandleIsLocalized} from '~/lib/redirect';
 import {customWizardPath} from '~/lib/customPrintData';
+import {uploadImage} from '~/lib/customPrintProof';
 import {siteOrigin} from '~/lib/seo';
 
 export const meta: Route.MetaFunction = ({data, matches}) => {
@@ -187,6 +189,12 @@ export default function Product() {
   const [quantity, setQuantity] = useState(MIN_ORDER_QTY);
   // Buy the design as-shown, or open the personalize configurator.
   const [mode, setMode] = useState<'stock' | 'custom'>('stock');
+  // Personalize logo + placement — lifted here so the MAIN gallery image and the
+  // configurator share it (drag on the big image, resize from the config).
+  const [pLogo, setPLogo] = useState<PersonalizeLogo | null>(null);
+  const [logoPos, setLogoPos] = useState({x: 50, y: 50});
+  const [logoScale, setLogoScale] = useState(40);
+  const [logoRotate, setLogoRotate] = useState(0);
 
   const unitPrice = selectedVariant?.price;
   const unitCompareAt = selectedVariant?.compareAtPrice;
@@ -240,6 +248,19 @@ export default function Product() {
               images={galleryImages}
               title={title}
               activeImageUrl={selectedVariant?.image?.url}
+              logoOverlay={
+                mode === 'custom' && pLogo?.preview
+                  ? {
+                      src: pLogo.preview,
+                      pos: logoPos,
+                      scale: logoScale,
+                      rotate: logoRotate,
+                      onPosChange: setLogoPos,
+                      onScaleChange: setLogoScale,
+                      onRotateChange: setLogoRotate,
+                    }
+                  : null
+              }
             />
           </div>
 
@@ -283,6 +304,14 @@ export default function Product() {
                   quantity={quantity}
                   setQuantity={setQuantity}
                   onBack={() => setMode('stock')}
+                  logo={pLogo}
+                  setLogo={setPLogo}
+                  logoPos={logoPos}
+                  setLogoPos={setLogoPos}
+                  logoScale={logoScale}
+                  setLogoScale={setLogoScale}
+                  logoRotate={logoRotate}
+                  setLogoRotate={setLogoRotate}
                 />
               )}
             </div>
@@ -290,13 +319,7 @@ export default function Product() {
             <TrustLine />
 
             <div className="mt-8 border-t border-black/10">
-              <Accordion title="Description" defaultOpen>
-                <div
-                  className="prose max-w-none text-sm text-muted [&_a]:text-brand-700 [&_a]:underline"
-                  dangerouslySetInnerHTML={{__html: descriptionHtml}}
-                />
-              </Accordion>
-              <Accordion title="Shipping & Returns">
+              <Accordion title="Shipping & Returns" defaultOpen>
                 <p className="text-sm text-muted">
                   Every piece is{' '}
                   <span className="font-semibold text-ink">
@@ -318,23 +341,16 @@ export default function Product() {
                   <li>Ships from custombandanas</li>
                 </ul>
               </Accordion>
-              <Accordion title="Reviews (373)" meta={<Stars />}>
-                <div className="flex items-center gap-4">
-                  <div className="text-4xl font-extrabold leading-none text-ink">
-                    5.0
-                  </div>
-                  <div>
-                    <Stars />
-                    <p className="mt-1 text-xs text-muted">
-                      Based on 373 verified reviews
-                    </p>
-                  </div>
-                </div>
-              </Accordion>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Tabbed Description / Reviews band below the detail (like the wizard). */}
+      <ProductInfo
+        productHandle={product.handle}
+        descriptionHtml={descriptionHtml}
+      />
 
       {/* "You may also like" — deferred so it streams in after the detail. */}
       <Suspense fallback={null}>
@@ -393,26 +409,6 @@ function RelatedProducts({
         </div>
       </div>
     </section>
-  );
-}
-
-function Stars({count = 5}: {count?: number}) {
-  return (
-    <span
-      className="flex items-center gap-0.5 text-brand-500"
-      aria-label={`${count} out of 5 stars`}
-    >
-      {Array.from({length: 5}).map((_, i) => (
-        <svg key={i} viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-          <path
-            d="M12 2l2.9 6.3 6.9.7-5.1 4.6 1.4 6.8L12 17.8 5.9 20.4l1.4-6.8L2.2 9l6.9-.7L12 2z"
-            fill={i < count ? 'currentColor' : 'none'}
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-        </svg>
-      ))}
-    </span>
   );
 }
 
@@ -521,17 +517,93 @@ function PersonalizeStep({
  * client-side (name/type/size); wire an upload endpoint (Shopify Files / R2) and
  * store the returned URL in `_custom_print_data.logo.url` to send the artwork.
  */
+type PersonalizeLogo = {
+  name: string;
+  type: string;
+  size: number;
+  preview: string | null;
+};
+
+/**
+ * Composite the product photo + the placed logo (position / scale / rotation)
+ * into a single PNG data URL — the "Design output" proof shown in the cart and
+ * on the order. Returns null if compositing fails (e.g. a tainted canvas).
+ */
+async function buildDesignProof(
+  productUrl: string | null,
+  logoDataUrl: string,
+  pos: {x: number; y: number},
+  scale: number,
+  rotateDeg: number,
+): Promise<string | null> {
+  const SIZE = 700;
+  const canvas = document.createElement('canvas');
+  canvas.width = SIZE;
+  canvas.height = SIZE;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const load = (src: string, cross: boolean) =>
+    new Promise<HTMLImageElement>((res, rej) => {
+      const im = new window.Image();
+      if (cross) im.crossOrigin = 'anonymous';
+      im.onload = () => res(im);
+      im.onerror = rej;
+      im.src = src;
+    });
+  try {
+    if (productUrl) {
+      const p = await load(productUrl, true);
+      const s = Math.max(SIZE / p.width, SIZE / p.height); // cover
+      const w = p.width * s;
+      const h = p.height * s;
+      ctx.drawImage(p, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+    } else {
+      ctx.fillStyle = '#eef8ef';
+      ctx.fillRect(0, 0, SIZE, SIZE);
+    }
+    const lg = await load(logoDataUrl, false);
+    const logoW = (scale / 100) * SIZE;
+    const logoH = logoW * (lg.height / lg.width || 1);
+    ctx.save();
+    ctx.translate((pos.x / 100) * SIZE, (pos.y / 100) * SIZE);
+    ctx.rotate((rotateDeg * Math.PI) / 180);
+    ctx.drawImage(lg, -logoW / 2, -logoH / 2, logoW, logoH);
+    ctx.restore();
+    return canvas.toDataURL('image/png');
+  } catch {
+    return null;
+  }
+}
+
 function PersonalizeSection({
   selectedVariant,
   quantity,
   setQuantity,
   onBack,
+  logo,
+  setLogo,
+  logoPos,
+  setLogoPos,
+  logoScale,
+  setLogoScale,
+  logoRotate,
+  setLogoRotate,
 }: {
   selectedVariant: ProductFragment['selectedOrFirstAvailableVariant'];
   quantity: number;
   setQuantity: (fn: (q: number) => number) => void;
   /** Return to the "buy as shown" view. */
   onBack: () => void;
+  // Logo + placement are lifted to the parent so the main gallery image can host
+  // the draggable logo while the configurator resizes/removes it.
+  logo: PersonalizeLogo | null;
+  setLogo: (l: PersonalizeLogo | null) => void;
+  logoPos: {x: number; y: number};
+  setLogoPos: (p: {x: number; y: number}) => void;
+  logoScale: number;
+  setLogoScale: (n: number) => void;
+  logoRotate: number;
+  setLogoRotate: (n: number) => void;
 }) {
   const {open} = useAside();
   const [keepOriginal, setKeepOriginal] = useState(true);
@@ -542,14 +614,21 @@ function PersonalizeSection({
   const [customSize, setCustomSize] = useState(false);
   const [w, setW] = useState('');
   const [h, setH] = useState('');
-  const [logo, setLogo] = useState<{
-    name: string;
-    type: string;
-    size: number;
-    preview: string | null;
-  } | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Artwork hosting: the picked file is uploaded to the Shopify Files CDN so the
+  // order carries a real URL (not just a filename) for fulfilment.
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoStatus, setLogoStatus] = useState<
+    'idle' | 'uploading' | 'ready' | 'error'
+  >('idle');
+  // Optional free-text note / design brief that rides along on the order.
+  const [note, setNote] = useState('');
+  // Compositing status for the "Prepare my design" step (the hosted proof URL
+  // itself lives in proofUrlRef, below).
+  const [designStatus, setDesignStatus] = useState<
+    'idle' | 'pending' | 'ready' | 'error'
+  >('ready');
 
   const onFile = (file?: File | null) => {
     setLogoError(null);
@@ -565,53 +644,167 @@ function PersonalizeSection({
       setLogoError('That file is over 25MB — please upload a smaller one.');
       return;
     }
-    const preview = file.type.startsWith('image/')
-      ? URL.createObjectURL(file)
-      : null;
-    setLogo({name: file.name, type: file.type, size: file.size, preview});
+    setLogoPos({x: 50, y: 50});
+    setLogoScale(40);
+    setLogoRotate(0);
+    setLogoStatus('uploading');
+    setLogoUrl(null);
+    setDesignStatus('ready');
+    const isImg = file.type.startsWith('image/');
+    // Read as a data URL — used BOTH as the preview (a data: URL, which the CSP
+    // allows; blob: URLs are blocked) and as the payload uploaded to the CDN.
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      setLogo({
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        preview: isImg ? dataUrl : null,
+      });
+      void uploadImage(dataUrl, file.name).then((url) => {
+        setLogoUrl(url);
+        setLogoStatus(url ? 'ready' : 'error');
+      });
+    };
+    reader.onerror = () => setLogoStatus('error');
+    reader.readAsDataURL(file);
   };
+
+  // The product photo used as the backdrop when compositing the proof on add.
+  const productImgUrl = selectedVariant?.image?.url ?? null;
 
   const size = customSize
     ? `Custom ${w || '?'} × ${h || '?'} in`
     : SIZE_PRESETS.find((s) => s.name === sizePreset)?.dims ?? sizePreset;
 
-  const customData = {
-    v: 1,
-    color,
-    fabric,
-    size,
-    logo: logo
-      ? {
-          name: logo.name,
-          type: logo.type,
-          sizeKB: Math.round(logo.size / 1024),
-          // TODO: set once an upload endpoint exists.
-          url: null as string | null,
-        }
-      : null,
+  const uploading = logoStatus === 'uploading';
+  const fetcher = useFetcher();
+  const adding = fetcher.state !== 'idle';
+  // Editing is free (the on-image overlay IS the preview). The composite proof is
+  // rendered + hosted ONCE, when the customer adds to cart. `preparing` is only
+  // true during that click.
+  const preparing = designStatus === 'pending';
+  // Cache the last generated proof so re-adding an unchanged placement reuses it.
+  const proofSigRef = useRef<string | null>(null);
+  const proofUrlRef = useRef<string | null>(null);
+  const placementSig = () =>
+    JSON.stringify({
+      n: logo?.name,
+      x: Math.round(logoPos.x),
+      y: Math.round(logoPos.y),
+      s: logoScale,
+      r: logoRotate,
+      img: productImgUrl,
+    });
+
+  // Build the cart line-item properties given the (freshly hosted) proof URL.
+  const makeAttributes = (out: string | null) => {
+    const cd = {
+      v: 1,
+      color,
+      fabric,
+      size,
+      note: note.trim() || null,
+      designOutput: out,
+      logo: logo
+        ? {
+            name: logo.name,
+            type: logo.type,
+            sizeKB: Math.round(logo.size / 1024),
+            url: logoUrl,
+            position: logo.preview
+              ? {
+                  x: Math.round(logoPos.x),
+                  y: Math.round(logoPos.y),
+                  scale: logoScale,
+                  rotate: logoRotate,
+                }
+              : null,
+          }
+        : null,
+    };
+    return [
+      {key: 'Personalized', value: 'Yes'},
+      {key: 'Color', value: color},
+      {key: 'Fabric', value: fabric},
+      {key: 'Size', value: size},
+      ...(logo
+        ? [
+            {
+              key: 'Logo',
+              value: logoUrl ?? `${logo.name} (not uploaded — proof to follow)`,
+            },
+          ]
+        : []),
+      ...(logo && logo.preview
+        ? [
+            {
+              key: 'Logo placement',
+              value: `x ${Math.round(logoPos.x)}% · y ${Math.round(
+                logoPos.y,
+              )}% · size ${logoScale}% · ${logoRotate}°`,
+            },
+          ]
+        : []),
+      ...(note.trim() ? [{key: 'Note', value: note.trim()}] : []),
+      // Composite proof (product + placed logo) — drives the cart thumbnail.
+      ...(out ? [{key: 'Design output', value: out}] : []),
+      {key: '_custom_print_data', value: JSON.stringify(cd)},
+    ];
   };
 
-  const attributes = [
-    {key: 'Personalized', value: 'Yes'},
-    {key: 'Color', value: color},
-    {key: 'Fabric', value: fabric},
-    {key: 'Size', value: size},
-    ...(logo ? [{key: 'Logo', value: logo.name}] : []),
-    {key: '_custom_print_data', value: JSON.stringify(customData)},
-  ];
+  const baseReady = customSize ? Boolean(w && h) : true;
+  const ready = baseReady && !uploading;
 
-  const lines = selectedVariant
-    ? [
-        {
-          merchandiseId: selectedVariant.id,
-          quantity,
-          selectedVariant,
-          attributes,
-        },
-      ]
-    : [];
+  // The proof is "ready" for the placement currently on screen once it's been
+  // prepared for that exact placement (a no-logo personalization needs none).
+  const designReady = !logo?.preview || proofSigRef.current === placementSig();
 
-  const ready = customSize ? Boolean(w && h) : true;
+  // Step 1 — render the composite proof + host it (explicit "Prepare" click).
+  const handlePrepare = async () => {
+    if (!logo?.preview || preparing) return;
+    const sig = placementSig();
+    setDesignStatus('pending');
+    const proof = await buildDesignProof(
+      productImgUrl,
+      logo.preview,
+      logoPos,
+      logoScale,
+      logoRotate,
+    );
+    const out = proof
+      ? await uploadImage(proof, 'personalized-design.png')
+      : null;
+    proofSigRef.current = sig;
+    proofUrlRef.current = out;
+    setDesignStatus(out ? 'ready' : 'error');
+  };
+
+  // Step 2 — add to cart (the proof is already hosted, so this is instant).
+  const handleAdd = () => {
+    if (!selectedVariant || !ready || !designReady || adding) return;
+    const out = logo?.preview ? proofUrlRef.current : null;
+    void fetcher.submit(
+      {
+        [CartForm.INPUT_NAME]: JSON.stringify({
+          action: CartForm.ACTIONS.LinesAdd,
+          inputs: {
+            lines: [
+              {
+                merchandiseId: selectedVariant.id,
+                quantity,
+                selectedVariant,
+                attributes: makeAttributes(out),
+              },
+            ],
+          },
+        }),
+      },
+      {method: 'POST', action: '/cart'},
+    );
+    open('cart');
+  };
 
   return (
     <div className="rounded-2xl bg-mint/50 p-5 ring-1 ring-black/5">
@@ -787,6 +980,9 @@ function PersonalizeSection({
               type="button"
               onClick={() => {
                 setLogo(null);
+                setLogoUrl(null);
+                setLogoStatus('idle');
+                setDesignStatus('ready');
                 if (inputRef.current) inputRef.current.value = '';
               }}
               className="text-sm font-semibold text-muted hover:text-ink"
@@ -805,6 +1001,76 @@ function PersonalizeSection({
         {logoError ? (
           <p className="mt-2 text-xs font-semibold text-red-600">{logoError}</p>
         ) : null}
+
+        {/* CDN upload status */}
+        {logo && !logoError ? (
+          <p className="mt-2 text-xs font-semibold">
+            {logoStatus === 'uploading' ? (
+              <span className="text-muted">Uploading artwork…</span>
+            ) : logoStatus === 'error' ? (
+              <span className="text-red-600">
+                Upload failed — we’ll chase the artwork by email.
+              </span>
+            ) : (
+              <span className="text-brand-700">Artwork uploaded ✓</span>
+            )}
+          </p>
+        ) : null}
+
+        {/* Placement — transform the logo on the MAIN product image */}
+        {logo?.preview ? (
+          <div className="mt-3">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-brand-700">
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20" />
+              </svg>
+              On the product image: drag to move, corners to resize, top handle to
+              rotate.
+            </p>
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>
+                Size <span className="font-semibold text-ink">{logoScale}%</span>{' '}
+                · Rotation{' '}
+                <span className="font-semibold text-ink">{logoRotate}°</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLogoPos({x: 50, y: 50});
+                  setLogoScale(40);
+                  setLogoRotate(0);
+                }}
+                className="font-semibold text-brand-700 hover:underline"
+              >
+                Reset placement
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Optional note / design brief */}
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-xs font-semibold text-muted">
+            Add a note (optional)
+          </span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="Anything we should know — colours, placement, text…"
+            className="w-full resize-none rounded-xl border border-black/15 bg-white px-3 py-2 text-sm text-ink focus:border-brand-500 focus:outline-none"
+          />
+        </label>
       </PersonalizeStep>
 
       {/* Step 4 — size */}
@@ -909,24 +1175,71 @@ function PersonalizeSection({
           <span className="text-ink">{fabric}</span> · Size:{' '}
           <span className="text-ink">{size}</span> · Logo:{' '}
           <span className="text-ink">{logo ? logo.name : 'None'}</span>
+          {note.trim() ? (
+            <>
+              {' '}
+              · Note: <span className="text-ink">added</span>
+            </>
+          ) : null}
         </p>
         <p className="mt-2 text-[11px] text-muted">
           Made to order · 20–30 days · we email a proof before printing.
         </p>
       </div>
 
-      <div className="mt-6 w-full [&_form]:max-w-full">
-        <AddToCartButton
-          className="btn btn-dark w-full min-h-11 disabled:cursor-not-allowed disabled:opacity-40"
-          disabled={!selectedVariant || !ready}
-          onClick={() => open('cart')}
-          lines={lines}
-        >
-          Add personalized to cart
-        </AddToCartButton>
-        {!ready ? (
+      <div className="mt-6 w-full">
+        {logo?.preview && !designReady ? (
+          // Step 1 — prepare the proof for the current placement.
+          <button
+            type="button"
+            onClick={() => void handlePrepare()}
+            disabled={preparing || uploading || !baseReady}
+            className="btn btn-dark w-full min-h-11 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {preparing ? 'Preparing your design…' : 'Prepare my design'}
+          </button>
+        ) : (
+          <>
+            {logo?.preview ? (
+              <p className="mb-2 flex items-center justify-center gap-1.5 text-xs font-semibold text-brand-700">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+                {proofUrlRef.current
+                  ? 'Design ready'
+                  : 'Proof will follow by email'}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleAdd}
+              disabled={!selectedVariant || !ready || adding}
+              className="btn btn-dark w-full min-h-11 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {adding ? 'Adding…' : 'Add personalized to cart'}
+            </button>
+          </>
+        )}
+        {!baseReady ? (
           <p className="mt-2 text-center text-xs text-muted">
             Enter your custom width and height to continue.
+          </p>
+        ) : uploading ? (
+          <p className="mt-2 text-center text-xs text-muted">
+            Uploading your artwork…
+          </p>
+        ) : logo?.preview && !designReady && !preparing ? (
+          <p className="mt-2 text-center text-xs text-muted">
+            Prepare your design to preview it in the cart.
           </p>
         ) : null}
       </div>

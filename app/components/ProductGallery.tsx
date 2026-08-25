@@ -9,16 +9,93 @@ type GalleryImage = {
   height?: number | null;
 };
 
+/** A transformable logo laid over the main image (personalize flow) — drag to
+ *  move, drag a corner to resize, drag the top handle to rotate. */
+type LogoOverlay = {
+  src: string;
+  pos: {x: number; y: number};
+  scale: number;
+  rotate: number;
+  onPosChange: (p: {x: number; y: number}) => void;
+  onScaleChange: (n: number) => void;
+  onRotateChange: (deg: number) => void;
+};
+
 export function ProductGallery({
   images,
   title,
   activeImageUrl,
+  logoOverlay,
 }: {
   images: GalleryImage[];
   title: string;
   activeImageUrl?: string | null;
+  logoOverlay?: LogoOverlay | null;
 }) {
   const [active, setActive] = useState(0);
+  // The main-image box — drag maths measure against this rect.
+  const mainImgRef = useRef<HTMLDivElement | null>(null);
+
+  // Attach window listeners for a pointer gesture; auto-cleans on pointerup.
+  const runGesture = (onMove: (ev: PointerEvent) => void) => {
+    const up = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', up);
+  };
+  // Screen-space centre of the logo (its % position within the main image box).
+  const logoCentre = () => {
+    const r = mainImgRef.current?.getBoundingClientRect();
+    if (!r || !logoOverlay) return null;
+    return {
+      cx: r.left + (logoOverlay.pos.x / 100) * r.width,
+      cy: r.top + (logoOverlay.pos.y / 100) * r.height,
+      rect: r,
+    };
+  };
+
+  // Move — the logo centre follows the pointer (clamped inside the box).
+  const startMove = (e: React.PointerEvent) => {
+    e.preventDefault();
+    runGesture((ev) => {
+      const r = mainImgRef.current?.getBoundingClientRect();
+      if (!r || !r.width || !logoOverlay) return;
+      const clamp = (n: number) => Math.min(95, Math.max(5, n));
+      logoOverlay.onPosChange({
+        x: clamp(((ev.clientX - r.left) / r.width) * 100),
+        y: clamp(((ev.clientY - r.top) / r.height) * 100),
+      });
+    });
+  };
+  // Resize — scale by the ratio of pointer-distance-from-centre (rotation-safe).
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const c = logoCentre();
+    if (!c || !logoOverlay) return;
+    const startDist =
+      Math.hypot(e.clientX - c.cx, e.clientY - c.cy) || 1;
+    const startScale = logoOverlay.scale;
+    runGesture((ev) => {
+      const d = Math.hypot(ev.clientX - c.cx, ev.clientY - c.cy);
+      const next = Math.min(95, Math.max(6, startScale * (d / startDist)));
+      logoOverlay.onScaleChange(Math.round(next));
+    });
+  };
+  // Rotate — angle from the centre to the pointer (0° = handle straight up).
+  const startRotate = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    runGesture((ev) => {
+      const c = logoCentre();
+      if (!c || !logoOverlay) return;
+      const ang =
+        (Math.atan2(ev.clientY - c.cy, ev.clientX - c.cx) * 180) / Math.PI + 90;
+      logoOverlay.onRotateChange(Math.round(((ang % 360) + 360) % 360));
+    });
+  };
 
   // Refs to each rail *container* (desktop vertical / mobile horizontal). We
   // scroll the active child into view — a container ref avoids the shared-ref
@@ -116,13 +193,64 @@ export function ProductGallery({
 
         {/* Main image */}
         <div className="relative flex-1">
-          <div className="aspect-square overflow-hidden rounded-3xl bg-mint">
+          <div
+            ref={mainImgRef}
+            className="relative aspect-square overflow-hidden rounded-3xl bg-mint"
+          >
             <Image
               data={main}
               sizes="(min-width: 1024px) 45vw, 100vw"
               className="h-full w-full object-cover"
               alt={main.altText || title}
             />
+            {/* Transformable personalize logo — move / resize / rotate */}
+            {logoOverlay ? (
+              <div
+                className="absolute touch-none select-none"
+                style={{
+                  left: `${logoOverlay.pos.x}%`,
+                  top: `${logoOverlay.pos.y}%`,
+                  width: `${logoOverlay.scale}%`,
+                  transform: `translate(-50%, -50%) rotate(${logoOverlay.rotate}deg)`,
+                }}
+              >
+                {/* Logo — drag the body to move */}
+                <img
+                  src={logoOverlay.src}
+                  alt="Your logo"
+                  draggable={false}
+                  onPointerDown={startMove}
+                  className="block w-full cursor-move touch-none select-none object-contain drop-shadow-lg"
+                />
+                {/* Selection box */}
+                <div className="pointer-events-none absolute inset-0 border-2 border-brand-500" />
+                {/* Corner resize handles */}
+                {(
+                  [
+                    ['0%', '0%', 'cursor-nwse-resize'],
+                    ['100%', '0%', 'cursor-nesw-resize'],
+                    ['0%', '100%', 'cursor-nesw-resize'],
+                    ['100%', '100%', 'cursor-nwse-resize'],
+                  ] as const
+                ).map(([l, t, cur]) => (
+                  <span
+                    key={`${l}-${t}`}
+                    onPointerDown={startResize}
+                    style={{left: l, top: t}}
+                    aria-label="Resize logo"
+                    className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-sm border border-brand-500 bg-white shadow ${cur}`}
+                  />
+                ))}
+                {/* Rotate handle (above the box) */}
+                <div className="pointer-events-none absolute left-1/2 top-0 h-5 w-px -translate-x-1/2 -translate-y-full bg-brand-500" />
+                <span
+                  onPointerDown={startRotate}
+                  aria-label="Rotate logo"
+                  style={{left: '50%', top: '-20px'}}
+                  className="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border border-brand-500 bg-white shadow active:cursor-grabbing"
+                />
+              </div>
+            ) : null}
           </div>
 
           {images.length > 1 && (

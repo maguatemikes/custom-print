@@ -1,20 +1,21 @@
 import type {Route} from './+types/api.reviews';
 import {fetchProductReviews, submitReview} from '~/lib/judgeme.server';
-import {customWizardPath} from '~/lib/customPrintData';
 
 /**
  * Resource route for reviews (PER PRODUCT):
  *  - GET  ?handle=… → fetch that product's published reviews (called lazily by
- *           CustomPrintInfo so the Judge.me API calls never block the render).
+ *           the reviews UI so the Judge.me API calls never block the render).
  *  - POST (with a `handle` field) → submit a review to that product on Judge.me,
  *           server-side so the private token never touches the client.
  */
 
-// Only our custom-print shape products can be reviewed here; an unknown/missing
-// handle falls back to the Square product.
+// Accept any real product handle (custom-print shapes AND normal PDP products).
+// A missing/malformed handle falls back to the Square product. The slug shape
+// guard keeps the value sane before it reaches Judge.me.
 const DEFAULT_HANDLE = 'custom-square-bandana-wizard';
+const HANDLE_RE = /^[a-z0-9][a-z0-9-]{0,127}$/i;
 function resolveHandle(handle: string | null | undefined): string {
-  return handle && customWizardPath(handle) ? handle : DEFAULT_HANDLE;
+  return handle && HANDLE_RE.test(handle) ? handle : DEFAULT_HANDLE;
 }
 
 export async function loader({request, context}: Route.LoaderArgs) {

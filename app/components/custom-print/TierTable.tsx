@@ -116,7 +116,7 @@ export function TierTable({
                 </span>
                 <span
                   className={`flex h-7 items-center justify-center text-[11px] ${
-                    isActive ? 'text-white/80' : 'text-brand-700'
+                    isActive ? 'text-white/80' : 'text-red-600'
                   }`}
                 >
                   {pct > 0 ? `${pct}%` : '—'}
