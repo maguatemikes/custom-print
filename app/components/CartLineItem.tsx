@@ -76,6 +76,15 @@ export function CartLineItem({
               loading="lazy"
               className="h-20 w-20 rounded-xl bg-mint object-contain"
             />
+          ) : baseColour ? (
+            // A blank (no-print) bandana has no proof image — show the chosen
+            // solid colour, NOT the made-to-order product's placeholder image
+            // (checked before `image` so the colour wins for blank lines).
+            <div
+              className="h-20 w-20 rounded-xl ring-1 ring-inset ring-black/10"
+              style={{backgroundColor: baseColour}}
+              aria-label={`${product.title} — ${baseColour}`}
+            />
           ) : image ? (
             <Image
               alt={title}
@@ -85,12 +94,6 @@ export function CartLineItem({
               width={80}
               loading="lazy"
               className="h-20 w-20 rounded-xl bg-mint object-cover"
-            />
-          ) : baseColour ? (
-            <div
-              className="h-20 w-20 rounded-xl ring-1 ring-inset ring-black/10"
-              style={{backgroundColor: baseColour}}
-              aria-label={`${product.title} — ${baseColour}`}
             />
           ) : (
             <div className="h-20 w-20 rounded-xl bg-mint" />

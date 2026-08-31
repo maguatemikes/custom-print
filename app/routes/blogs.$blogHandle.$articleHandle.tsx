@@ -2,8 +2,9 @@ import {Link, useLoaderData} from 'react-router';
 import type {Route} from './+types/blogs.$blogHandle.$articleHandle';
 import {Image} from '@shopify/hydrogen';
 import {redirectIfHandleIsLocalized} from '~/lib/redirect';
+import {siteOrigin} from '~/lib/seo';
 
-export const meta: Route.MetaFunction = ({data}) => {
+export const meta: Route.MetaFunction = ({data, matches, location}) => {
   const article = data?.article;
   if (!article) return [{title: 'Article — Custom Bandanas'}];
   const title = article.seo?.title || `${article.title} — Custom Bandanas`;
@@ -12,12 +13,15 @@ export const meta: Route.MetaFunction = ({data}) => {
     .trim()
     .slice(0, 160);
   const image = article.image?.url;
+  const url = `${siteOrigin(matches)}${location.pathname}`;
   return [
     {title},
     {name: 'description', content: description},
+    {tagName: 'link', rel: 'canonical', href: url},
     {property: 'og:type', content: 'article'},
     {property: 'og:title', content: title},
     {property: 'og:description', content: description},
+    {property: 'og:url', content: url},
     ...(image ? [{property: 'og:image', content: image}] : []),
     ...(article.publishedAt
       ? [{property: 'article:published_time', content: article.publishedAt}]

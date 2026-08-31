@@ -27,7 +27,7 @@ export function CustomPrintInfo({productHandle}: {productHandle: string}) {
     ['Fabric', 'Cotton or quick-dry polyester'],
     ['Printing', 'Full-colour digital — no setup fees'],
     ['Print options', 'One side, both sides, or seamless'],
-    ['Artwork', 'PNG, JPG, SVG or PDF up to 25 MB'],
+    ['Artwork', 'PNG or JPG up to 25 MB'],
     ['Turnaround', '~20–30 business days after proof'],
   ];
 

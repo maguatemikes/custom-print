@@ -15,7 +15,10 @@ import {
 } from '~/components/AccountUI';
 
 export const meta: Route.MetaFunction = ({data}) => {
-  return [{title: `Order ${data?.order?.name}`}];
+  return [
+    {title: `Order ${data?.order?.name} — Custom Bandanas`},
+    {name: 'robots', content: 'noindex,nofollow'},
+  ];
 };
 
 export async function loader({params, context}: Route.LoaderArgs) {

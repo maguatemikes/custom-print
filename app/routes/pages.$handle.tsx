@@ -1,9 +1,28 @@
 import {useLoaderData} from 'react-router';
 import type {Route} from './+types/pages.$handle';
 import {redirectIfHandleIsLocalized} from '~/lib/redirect';
+import {siteOrigin} from '~/lib/seo';
 
-export const meta: Route.MetaFunction = ({data}) => {
-  return [{title: `Hydrogen | ${data?.page.title ?? ''}`}];
+export const meta: Route.MetaFunction = ({data, matches, location}) => {
+  const page = data?.page;
+  const title = page?.seo?.title || `${page?.title ?? 'Page'} — Custom Bandanas`;
+  const description = (page?.seo?.description || page?.title || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+  const url = `${siteOrigin(matches)}${location.pathname}`;
+  return [
+    {title},
+    ...(description ? [{name: 'description', content: description}] : []),
+    {tagName: 'link', rel: 'canonical', href: url},
+    {property: 'og:type', content: 'website'},
+    {property: 'og:title', content: title},
+    ...(description ? [{property: 'og:description', content: description}] : []),
+    {property: 'og:url', content: url},
+    {name: 'twitter:card', content: 'summary_large_image'},
+    {name: 'twitter:title', content: title},
+    ...(description ? [{name: 'twitter:description', content: description}] : []),
+  ];
 };
 
 export async function loader(args: Route.LoaderArgs) {

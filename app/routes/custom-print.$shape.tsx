@@ -1,5 +1,18 @@
-import {useDeferredValue, useEffect, useMemo, useRef, useState} from 'react';
-import {useLoaderData, redirect} from 'react-router';
+import {
+  Suspense,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  Await,
+  Link,
+  useLoaderData,
+  redirect,
+  type ShouldRevalidateFunction,
+} from 'react-router';
 import type {Route} from './+types/custom-print.$shape';
 import {siteOrigin} from '~/lib/seo';
 import {useAside} from '~/components/Aside';
@@ -18,6 +31,7 @@ import {
   EMAIL_RE,
   shapeRouteFor,
   normalizeSize,
+  SHAPE_ROUTES,
 } from '~/lib/customPrintData';
 import {svgToPng, uploadImage} from '~/lib/customPrintProof';
 import {
@@ -30,10 +44,20 @@ import {DesignStep} from '~/components/custom-print/DesignStep';
 import {QuantityStep} from '~/components/custom-print/QuantityStep';
 import {QuoteStep} from '~/components/custom-print/QuoteStep';
 import {CustomPrintInfo} from '~/components/custom-print/CustomPrintInfo';
+import {Breadcrumbs, breadcrumbJsonLd} from '~/components/Breadcrumbs';
 
 /* -------------------------------------------------------------------------- */
 /* SEO + loader                                                               */
 /* -------------------------------------------------------------------------- */
+
+// The wizard's product/variant data is fixed per shape and never changes from a
+// cart mutation. Only re-fetch when the shape param changes (square <-> triangle)
+// — this stops the redundant Shopify re-query (and the "double loading" glitch)
+// on every add-to-cart.
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  currentParams,
+  nextParams,
+}) => currentParams.shape !== nextParams.shape;
 
 export const meta: Route.MetaFunction = ({matches, data, params}) => {
   const shape = data?.shape ?? '';
@@ -41,19 +65,72 @@ export const meta: Route.MetaFunction = ({matches, data, params}) => {
   const noun = shape ? `${shape.toLowerCase()} bandana` : 'bandana';
   const title = `Design a custom ${noun} online — Custom Bandanas`;
   const description = `Design custom-printed ${noun}s online in four steps: size, quantity, design help, and an instant quote. Full-color digital printing, made to order, proofed before we print, with bulk & wholesale pricing.`;
-  const url = `${siteOrigin(matches)}/custom-print/${slug}`;
+  const origin = siteOrigin(matches);
+  const url = `${origin}/custom-print/${slug}`;
+
+  // Product JSON-LD price range comes from the CODE tier engine (not a Shopify
+  // variant) — the same source the wizard quotes from. highPrice = the entry
+  // (min-order) unit price, lowPrice = the deepest bulk unit price. NO network
+  // call here, so the wizard stays fast; aggregateRating is intentionally
+  // omitted (reviews load lazily client-side — see the loader).
+  const schemaShape = shape || 'Square';
+  const sizeKey = DEFAULT_SIZE[schemaShape] || sizesFor(schemaShape)[0]?.name || '';
+  const highPrice = sizeKey ? unitPriceFor(MIN_QTY, sizeKey, schemaShape) : 0;
+  const lowPrice = sizeKey ? unitPriceFor(1_000_000, sizeKey, schemaShape) : 0;
+  const productImage = data?.variants?.find((v) => v.image?.url)?.image?.url;
+  const productName = data?.productTitle || `Custom ${schemaShape} Bandana`;
+  const currencyCode = data?.currencyCode ?? 'USD';
+
   return [
     {title},
     {name: 'description', content: description},
     {tagName: 'link', rel: 'canonical', href: url},
-    {property: 'og:type', content: 'website'},
+    {property: 'og:type', content: 'product'},
     {property: 'og:site_name', content: 'Custom Bandanas'},
     {property: 'og:title', content: title},
     {property: 'og:description', content: description},
     {property: 'og:url', content: url},
+    ...(productImage ? [{property: 'og:image', content: productImage}] : []),
     {name: 'twitter:card', content: 'summary_large_image'},
     {name: 'twitter:title', content: title},
     {name: 'twitter:description', content: description},
+    {
+      // Product schema — priced from the tier engine (AggregateOffer range).
+      'script:ld+json': {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: productName,
+        description,
+        ...(productImage ? {image: [productImage]} : {}),
+        brand: {'@type': 'Brand', name: 'Custom Bandanas'},
+        ...(lowPrice > 0
+          ? {
+              offers: {
+                '@type': 'AggregateOffer',
+                priceCurrency: currencyCode,
+                lowPrice: lowPrice.toFixed(2),
+                highPrice: highPrice.toFixed(2),
+                availability: 'https://schema.org/InStock',
+                url,
+              },
+            }
+          : {}),
+      },
+    },
+    {
+      // BreadcrumbList — mirrors the visible <Breadcrumbs> trail on the page.
+      'script:ld+json': breadcrumbJsonLd(
+        [
+          {label: 'Home', href: '/'},
+          {
+            label: 'Made to order',
+            href: '/collections/made-to-order-collections',
+          },
+          {label: `${shape || 'Custom'} Bandana`},
+        ],
+        siteOrigin(matches),
+      ),
+    },
   ];
 };
 
@@ -141,6 +218,31 @@ export async function loader({context, params}: Route.LoaderArgs) {
   } catch {
     // Product not published to the headless channel yet — handled in the UI.
   }
+  // "You may also like" — the OTHER custom-print shape(s), wizard-only per request
+  // (each links to its own /custom-print/<shape> page). DEFERRED so it streams in
+  // below the fold and never blocks the wizard render.
+  const otherShapes = Promise.all(
+    Object.entries(SHAPE_ROUTES)
+      .filter(([s]) => s !== slug)
+      .map(async ([s, cfg]) => {
+        let image: {url: string; altText: string | null} | null = null;
+        try {
+          const d = (await storefront.query(SHAPE_CARD_QUERY, {
+            variables: {handle: cfg.handle},
+            cache: storefront.CacheLong(),
+          })) as {
+            product?: {
+              featuredImage?: {url: string; altText: string | null} | null;
+            };
+          };
+          image = d?.product?.featuredImage ?? null;
+        } catch {
+          image = null;
+        }
+        return {slug: s, label: cfg.label, blurb: cfg.blurb, image};
+      }),
+  );
+
   // Reviews load lazily (client-side, via the /api/reviews resource route) so the
   // two Judge.me API calls never block the wizard render — see CustomPrintInfo.
   return {
@@ -151,6 +253,7 @@ export async function loader({context, params}: Route.LoaderArgs) {
     shape: route.label,
     slug,
     defaultPattern: route.defaultPattern,
+    otherShapes,
   };
 }
 
@@ -159,7 +262,7 @@ export async function loader({context, params}: Route.LoaderArgs) {
 /* -------------------------------------------------------------------------- */
 
 export default function CustomDesign() {
-  const {variants, currencyCode, productTitle, productHandle, shape, slug, defaultPattern} =
+  const {variants, currencyCode, productTitle, productHandle, shape, slug, defaultPattern, otherShapes} =
     useLoaderData<typeof loader>();
   const {open} = useAside();
 
@@ -809,6 +912,16 @@ export default function CustomDesign() {
     <>
     <div className="bg-paper">
       <div className="ui-container py-8 md:py-12">
+        <Breadcrumbs
+          items={[
+            {label: 'Home', href: '/'},
+            {
+              label: 'Made to order',
+              href: '/collections/made-to-order-collections',
+            },
+            {label: `${shape} Bandana`},
+          ]}
+        />
         <div className="grid gap-8 lg:grid-cols-[3fr_2fr] lg:gap-12">
           {/* Left — live preview (same footprint as the PDP gallery) */}
           <div className="lg:sticky lg:top-28 lg:self-start">
@@ -1252,9 +1365,84 @@ export default function CustomDesign() {
       </div>
     </div>
       <CustomPrintInfo productHandle={productHandle} />
+      <Suspense fallback={null}>
+        <Await resolve={otherShapes} errorElement={null}>
+          {(shapes) => <OtherShapes shapes={shapes} />}
+        </Await>
+      </Suspense>
     </>
   );
 }
+
+/** "You may also like" on the wizard — the OTHER custom-print shape(s), each
+ *  linking to its own wizard page. Strictly wizard-only (per request); with only
+ *  square + triangle it renders a single card. */
+function OtherShapes({
+  shapes,
+}: {
+  shapes: Array<{
+    slug: string;
+    label: string;
+    blurb: string;
+    image: {url: string; altText: string | null} | null;
+  }>;
+}) {
+  if (!shapes.length) return null;
+  return (
+    <section className="bg-mint">
+      <div className="ui-container py-16 md:py-24">
+        <div className="mb-10">
+          <span className="eyebrow text-brand-700">Design another</span>
+          <h2 className="mt-2 text-3xl font-extrabold uppercase tracking-tight text-ink md:text-4xl">
+            You may also like
+          </h2>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-4">
+          {shapes.map((sh) => (
+            <Link
+              key={sh.slug}
+              to={`/custom-print/${sh.slug}`}
+              prefetch="intent"
+              className="group block"
+            >
+              <div className="overflow-hidden rounded-2xl bg-white">
+                {sh.image?.url ? (
+                  <img
+                    src={sh.image.url}
+                    alt={sh.image.altText || `Custom ${sh.label} bandana`}
+                    loading="lazy"
+                    className="aspect-square w-full bg-mint object-contain p-4 transition-transform duration-300 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="aspect-square w-full bg-mint" />
+                )}
+              </div>
+              <h3 className="mt-3 text-sm font-semibold text-ink">
+                Custom {sh.label} Bandana
+              </h3>
+              <p className="text-xs text-muted">{sh.blurb}</p>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const SHAPE_CARD_QUERY = `#graphql
+  query CustomShapeCard(
+    $handle: String!
+    $country: CountryCode
+    $language: LanguageCode
+  ) @inContext(country: $country, language: $language) {
+    product(handle: $handle) {
+      featuredImage {
+        url
+        altText
+      }
+    }
+  }
+` as const;
 
 const CUSTOM_PRODUCT_QUERY = `#graphql
   query CustomBandana(

@@ -36,7 +36,10 @@ export type ActionResponse = {
 };
 
 export const meta: Route.MetaFunction = () => {
-  return [{title: 'Addresses'}];
+  return [
+    {title: 'Addresses — Custom Bandanas'},
+    {name: 'robots', content: 'noindex,nofollow'},
+  ];
 };
 
 export async function loader({context}: Route.LoaderArgs) {

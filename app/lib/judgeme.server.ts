@@ -104,6 +104,64 @@ export async function submitReview(
   }
 }
 
+/**
+ * Rating totals ONLY (`{overall, total}`) for a product's Product JSON-LD
+ * `aggregateRating` — the rich-snippet stars. This runs in the PDP's critical
+ * loader, so it is designed to add **zero** time-to-first-byte:
+ *
+ *  - **Cache hit** → returns the cached totals in ~1ms (no Judge.me round-trip).
+ *  - **Cache miss** → returns `{0, 0}` IMMEDIATELY (schema omits the rating on
+ *    this one render) and fires the two-hop Judge.me fetch in the BACKGROUND
+ *    (via `waitUntil`), caching the result for 1h so the very next request — and
+ *    every crawl after it — serves real stars. The page never waits on Judge.me.
+ *
+ * Fully guarded: any missing config / error → `{overall: 0, total: 0}`.
+ * Pass `context.waitUntil` so the background refill outlives the response.
+ */
+export async function fetchProductRatingSummary(
+  env: {JUDGEME_API_TOKEN?: string; PUBLIC_STORE_DOMAIN?: string},
+  handle: string,
+  waitUntil?: (promise: Promise<unknown>) => void,
+): Promise<{overall: number; total: number}> {
+  const shop = env.PUBLIC_STORE_DOMAIN;
+  if (!env.JUDGEME_API_TOKEN || !shop || !handle) return {overall: 0, total: 0};
+
+  const cacheKey = new Request(
+    `https://judgeme-rating.internal/${encodeURIComponent(
+      shop,
+    )}/${encodeURIComponent(handle)}`,
+  );
+
+  let cache: Cache | undefined;
+  try {
+    cache = await caches.open('hydrogen');
+    const hit = await cache.match(cacheKey);
+    if (hit) return (await hit.json()) as {overall: number; total: number};
+  } catch {
+    return {overall: 0, total: 0}; // no cache primitive → skip the network entirely
+  }
+
+  // Cache MISS — never block the render. Refill in the background (result cached
+  // for 1h, incl. a legit 0/0 so we don't refetch every miss), return 0/0 now.
+  const refill = (async () => {
+    try {
+      const r = await fetchProductReviews(env, handle);
+      await cache!.put(
+        cacheKey,
+        new Response(JSON.stringify({overall: r.overall, total: r.total}), {
+          headers: {'Cache-Control': 'public, max-age=3600'},
+        }),
+      );
+    } catch {
+      // best-effort — retried on the next cache miss
+    }
+  })();
+  if (waitUntil) waitUntil(refill);
+  else void refill;
+
+  return {overall: 0, total: 0};
+}
+
 export async function fetchProductReviews(
   env: {JUDGEME_API_TOKEN?: string; PUBLIC_STORE_DOMAIN?: string},
   handle: string,

@@ -35,7 +35,7 @@ export function CartDeliveryOptions({
         <PreferenceTile
           method="PICK_UP"
           label="Pickup"
-          sub="Berlin, NJ"
+          sub="At our print shop"
           active={active === 'PICK_UP'}
           icon={
             <svg {...ICON}>

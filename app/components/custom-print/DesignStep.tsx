@@ -108,11 +108,9 @@ export function DesignStep({
   const onFile = (file?: File | null) => {
     setLogoError(null);
     if (!file) return;
-    const okType =
-      /^image\/(png|jpeg|svg\+xml)$/.test(file.type) ||
-      file.type === 'application/pdf';
+    const okType = /^image\/(png|jpeg)$/.test(file.type);
     if (!okType) {
-      setLogoError('Please use a PNG, JPG, SVG or PDF file.');
+      setLogoError('Please use a PNG or JPG file.');
       return;
     }
     if (file.size > 25 * 1024 * 1024) {
@@ -126,8 +124,7 @@ export function DesignStep({
       // Downscale ONLY the on-screen/proof preview (raster images) so the wizard
       // never renders a full-res (up to 25MB) image — that was the source of the
       // mobile lag/OOM when scaling, rotating, or tiling. The ORIGINAL `dataUrl`
-      // is kept for the print upload, so print quality is unchanged. SVG stays
-      // vector (renders crisp, tiny file); PDF has no on-screen preview.
+      // is kept for the print upload, so print quality is unchanged.
       const isRaster =
         file.type === 'image/png' || file.type === 'image/jpeg';
       const preview =
@@ -322,8 +319,8 @@ export function DesignStep({
         }
         hint={
           intent === 'help'
-            ? "Optional — we'll design it for you. PNG, JPG, SVG or PDF."
-            : 'Required to print — PNG, JPG, SVG or PDF. We proof it before printing.'
+            ? "Optional — we'll design it for you. PNG or JPG."
+            : 'Required to print — PNG or JPG. We proof it before printing.'
         }
       >
         {!logo ? (
@@ -362,7 +359,7 @@ export function DesignStep({
               <span className="text-brand-700 underline">browse</span>
             </span>
             <span className="text-xs text-muted">
-              PNG · JPG · SVG · PDF, up to 25MB
+              PNG · JPG, up to 25MB
             </span>
           </div>
         ) : (
@@ -403,7 +400,7 @@ export function DesignStep({
         <input
           ref={inputRef}
           type="file"
-          accept="image/png,image/jpeg,image/svg+xml,application/pdf"
+          accept="image/png,image/jpeg"
           className="hidden"
           onChange={(e) => onFile(e.target.files?.[0])}
         />

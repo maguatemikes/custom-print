@@ -1,5 +1,11 @@
 import {Suspense, useRef, useState} from 'react';
-import {Await, useLoaderData, redirect, useFetcher} from 'react-router';
+import {
+  Await,
+  useLoaderData,
+  redirect,
+  useFetcher,
+  type ShouldRevalidateFunction,
+} from 'react-router';
 import type {Route} from './+types/products.$handle';
 import {
   getSelectedProductOptions,
@@ -29,6 +35,18 @@ import {redirectIfHandleIsLocalized} from '~/lib/redirect';
 import {customWizardPath} from '~/lib/customPrintData';
 import {uploadImage} from '~/lib/customPrintProof';
 import {siteOrigin} from '~/lib/seo';
+import {Breadcrumbs, breadcrumbJsonLd} from '~/components/Breadcrumbs';
+import {fetchProductRatingSummary} from '~/lib/judgeme.server';
+
+// The product's data is fixed for a given handle + variant selection (which is
+// URL-driven via ?Color=&Size=). Re-fetch only when the URL changes — NOT on cart
+// mutations — so add-to-cart doesn't trigger a redundant product re-query.
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+  currentUrl,
+  nextUrl,
+}) =>
+  currentUrl.pathname !== nextUrl.pathname ||
+  currentUrl.search !== nextUrl.search;
 
 export const meta: Route.MetaFunction = ({data, matches}) => {
   const product = data?.product;
@@ -47,7 +65,27 @@ export const meta: Route.MetaFunction = ({data, matches}) => {
     .trim()
     .slice(0, 160);
   const image = variant?.image?.url || product.images?.nodes?.[0]?.url;
-  const url = `${siteOrigin(matches)}/products/${product.handle}`;
+  const origin = siteOrigin(matches);
+  const url = `${origin}/products/${product.handle}`;
+
+  // Rich-snippet stars only when there are real reviews to back them (Google
+  // rejects an aggregateRating with reviewCount 0). Guarded fetch → {overall,
+  // total}; both 0 when Judge.me has nothing or is unreachable.
+  const rating = data?.reviewSummary;
+  const aggregateRating =
+    rating && rating.total > 0
+      ? {
+          '@type': 'AggregateRating',
+          ratingValue: rating.overall,
+          reviewCount: rating.total,
+        }
+      : undefined;
+
+  const crumbs = [
+    {label: 'Home', href: '/'},
+    {label: 'Shop', href: '/collections'},
+    {label: product.title},
+  ];
 
   return [
     {title},
@@ -71,11 +109,15 @@ export const meta: Route.MetaFunction = ({data, matches}) => {
         image: image ? [image] : undefined,
         brand: {'@type': 'Brand', name: product.vendor || 'Custom Bandanas'},
         sku: variant?.sku || undefined,
+        aggregateRating,
         offers: variant?.price
           ? {
               '@type': 'Offer',
               priceCurrency: variant.price.currencyCode,
               price: variant.price.amount,
+              // Rolling validity (next year-end) — keeps the price "fresh" for
+              // Google without a per-day value that would churn the markup.
+              priceValidUntil: `${new Date().getFullYear() + 1}-12-31`,
               availability: variant.availableForSale
                 ? 'https://schema.org/InStock'
                 : 'https://schema.org/OutOfStock',
@@ -84,6 +126,7 @@ export const meta: Route.MetaFunction = ({data, matches}) => {
           : undefined,
       },
     },
+    {'script:ld+json': breadcrumbJsonLd(crumbs, origin)},
   ];
 };
 
@@ -117,11 +160,15 @@ async function loadCriticalData({context, params, request}: Route.LoaderArgs) {
     throw new Error('Expected product handle to be defined');
   }
 
-  const [{product}] = await Promise.all([
+  const [{product}, reviewSummary] = await Promise.all([
     storefront.query(PRODUCT_QUERY, {
       variables: {handle, selectedOptions: getSelectedProductOptions(request)},
     }),
-    // Add other queries here, so that they are loaded in parallel
+    // Rating totals for the Product JSON-LD's aggregateRating (rich-snippet
+    // stars). ZERO added TTFB — cache hit returns instantly, cache miss returns
+    // 0/0 now and refills in the background (context.waitUntil). See
+    // fetchProductRatingSummary.
+    fetchProductRatingSummary(context.env, handle, context.waitUntil),
   ]);
 
   if (!product?.id) {
@@ -133,6 +180,7 @@ async function loadCriticalData({context, params, request}: Route.LoaderArgs) {
 
   return {
     product,
+    reviewSummary,
   };
 }
 
@@ -145,21 +193,47 @@ function loadDeferredData({context, params}: Route.LoaderArgs) {
   const {storefront} = context;
   const {handle} = params;
 
-  // "You may also like" — Shopify's NATIVE recommendation engine only (the same
-  // one the Search & Discovery app tunes), fetched below the fold so it never
-  // blocks TTFB. `productRecommendations(intent: RELATED)` is algorithm-driven:
-  // every item it returns is genuinely related, so we show exactly those and
-  // nothing else. When it returns nothing (thin order history / uncategorized
-  // product), the row simply hides — we never pad with unrelated best-sellers.
-  const recommendations = handle
-    ? storefront
-        .query(PRODUCT_RECOMMENDATIONS_QUERY, {
+  // "You may also like" — Shopify's NATIVE recommendation engine FIRST
+  // (`productRecommendations(intent: RELATED)`, algorithm-driven & genuinely
+  // related), fetched below the fold so it never blocks TTFB. If it returns
+  // fewer than 4 (thin order history / uncategorised product / dev store), we top
+  // the row up with real, LIVE best-selling products — never hardcoded — so the
+  // section always shows a full set of 4. RELATED items always come first.
+  // Never recommend a made-to-order wizard product — those are configurators, not
+  // shoppable cards. `customWizardPath` is non-null for the square/triangle wizard
+  // handles.
+  const isWizard = (p: {handle: string}) => Boolean(customWizardPath(p.handle));
+
+  const recommendations = (async () => {
+    let items: RelatedProductFragment[] = [];
+    if (handle) {
+      try {
+        const data = await storefront.query(PRODUCT_RECOMMENDATIONS_QUERY, {
           variables: {handle},
           cache: storefront.CacheLong(),
-        })
-        .then((data) => data?.recommended ?? [])
-        .catch(() => [])
-    : Promise.resolve([]);
+        });
+        items = (data?.recommended ?? []).filter((p) => !isWizard(p));
+      } catch {
+        items = [];
+      }
+    }
+    // Need up to 5 so the row still has 4 after the current product is dropped.
+    if (items.length >= 5) return items;
+    try {
+      const fb = await storefront.query(RECOMMENDATIONS_FALLBACK_QUERY, {
+        cache: storefront.CacheLong(),
+      });
+      const seen = new Set(items.map((p) => p.id));
+      for (const p of fb?.products?.nodes ?? []) {
+        if (isWizard(p) || seen.has(p.id)) continue; // skip wizard + dupes
+        items.push(p as RelatedProductFragment);
+        seen.add(p.id);
+      }
+    } catch {
+      // best-effort — keep whatever RELATED returned
+    }
+    return items;
+  })();
 
   return {recommendations};
 }
@@ -241,6 +315,14 @@ export default function Product() {
   return (
     <>
       <div className="ui-container py-8 md:py-12">
+        <Breadcrumbs
+          className="mb-6"
+          items={[
+            {label: 'Home', href: '/'},
+            {label: 'Shop', href: '/collections'},
+            {label: title},
+          ]}
+        />
         <div className="grid gap-8 lg:grid-cols-[3fr_2fr] lg:gap-12">
           {/* Gallery */}
           <div className="lg:sticky lg:top-28 lg:self-start">
@@ -633,11 +715,9 @@ function PersonalizeSection({
   const onFile = (file?: File | null) => {
     setLogoError(null);
     if (!file) return;
-    const okType =
-      /^image\/(png|jpeg|svg\+xml)$/.test(file.type) ||
-      file.type === 'application/pdf';
+    const okType = /^image\/(png|jpeg)$/.test(file.type);
     if (!okType) {
-      setLogoError('Please use a PNG, JPG, SVG or PDF file.');
+      setLogoError('Please use a PNG or JPG file.');
       return;
     }
     if (file.size > 25 * 1024 * 1024) {
@@ -912,7 +992,7 @@ function PersonalizeSection({
       <PersonalizeStep
         n={3}
         title="Add your logo"
-        hint="Optional — PNG, JPG, SVG or PDF. We check print quality and send a proof."
+        hint="Optional — PNG or JPG. We check print quality and send a proof."
       >
         {!logo ? (
           <div
@@ -950,7 +1030,7 @@ function PersonalizeSection({
               <span className="text-brand-700 underline">browse</span>
             </span>
             <span className="text-xs text-muted">
-              PNG · JPG · SVG · PDF, up to 25MB
+              PNG · JPG, up to 25MB
             </span>
           </div>
         ) : (
@@ -994,7 +1074,7 @@ function PersonalizeSection({
         <input
           ref={inputRef}
           type="file"
-          accept="image/png,image/jpeg,image/svg+xml,application/pdf"
+          accept="image/png,image/jpeg"
           className="hidden"
           onChange={(e) => onFile(e.target.files?.[0])}
         />
@@ -1429,6 +1509,24 @@ const PRODUCT_RECOMMENDATIONS_QUERY = `#graphql
   ) @inContext(country: $country, language: $language) {
     recommended: productRecommendations(productHandle: $handle, intent: RELATED) {
       ...RelatedProduct
+    }
+  }
+  ${RELATED_PRODUCT_FRAGMENT}
+` as const;
+
+// Fallback pool for "You may also like" when the native recommendation engine
+// returns fewer than 4 (thin order history / uncategorised product / dev store).
+// Real, LIVE best-selling products — never hardcoded — used only to top the row
+// up to 4; native RELATED items are always preferred and shown first.
+const RECOMMENDATIONS_FALLBACK_QUERY = `#graphql
+  query RecommendationsFallback(
+    $country: CountryCode
+    $language: LanguageCode
+  ) @inContext(country: $country, language: $language) {
+    products(first: 8, sortKey: BEST_SELLING) {
+      nodes {
+        ...RelatedProduct
+      }
     }
   }
   ${RELATED_PRODUCT_FRAGMENT}

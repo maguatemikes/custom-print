@@ -4,8 +4,9 @@ import {Image, getPaginationVariables} from '@shopify/hydrogen';
 import type {ArticleItemFragment} from 'storefrontapi.generated';
 import {PaginatedResourceSection} from '~/components/PaginatedResourceSection';
 import {redirectIfHandleIsLocalized} from '~/lib/redirect';
+import {siteOrigin} from '~/lib/seo';
 
-export const meta: Route.MetaFunction = ({data}) => {
+export const meta: Route.MetaFunction = ({data, matches, location}) => {
   const blogTitle = data?.blog?.title;
   const title = blogTitle
     ? `${blogTitle} — Custom Bandanas`
@@ -13,12 +14,15 @@ export const meta: Route.MetaFunction = ({data}) => {
   const description = blogTitle
     ? `${blogTitle} — guides and inspiration from Custom Bandanas on custom bandana printing, design, and bulk ordering.`
     : 'Stories and guides from Custom Bandanas.';
+  const url = `${siteOrigin(matches)}${location.pathname}`;
   return [
     {title},
     {name: 'description', content: description},
+    {tagName: 'link', rel: 'canonical', href: url},
     {property: 'og:type', content: 'website'},
     {property: 'og:title', content: title},
     {property: 'og:description', content: description},
+    {property: 'og:url', content: url},
     {name: 'twitter:card', content: 'summary_large_image'},
     {name: 'twitter:title', content: title},
     {name: 'twitter:description', content: description},
