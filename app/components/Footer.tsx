@@ -63,6 +63,8 @@ export function Footer({
                   key={s.label}
                   href={s.href}
                   aria-label={s.label}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-brand-600 hover:text-white"
                 >
                   {s.icon}
@@ -120,7 +122,10 @@ export function Footer({
             © {new Date().getFullYear()}{' '}
             {header?.shop?.name || 'Custom Bandanas'}. All rights reserved.
           </p>
-          <p>Powered by Shopify Hydrogen · Carbon-neutral shipping</p>
+          <p>
+            Powered by{' '}
+            <span className="font-semibold text-white">NellacosaCorp</span>
+          </p>
         </div>
       </div>
     </footer>
@@ -185,10 +190,12 @@ function FooterMenu({
   );
 }
 
+// Official Wholesale For Everyone social profiles (sourced from the brand's own
+// site footer). Icons are monoline, matching the site's functional-icon style.
 const SOCIALS = [
   {
     label: 'Instagram',
-    href: 'https://instagram.com',
+    href: 'https://www.instagram.com/wholesaleforeveryone',
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <rect
@@ -214,8 +221,23 @@ const SOCIALS = [
     ),
   },
   {
+    label: 'Facebook',
+    href: 'https://www.facebook.com/wholesaleforeveryonecom',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+        <path
+          d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
+  {
     label: 'TikTok',
-    href: 'https://tiktok.com',
+    href: 'https://www.tiktok.com/@wholesaleforeveryone',
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <path
@@ -230,15 +252,73 @@ const SOCIALS = [
     ),
   },
   {
-    label: 'X',
-    href: 'https://x.com',
+    label: 'YouTube',
+    href: 'https://www.youtube.com/@WholesaleForEveryone',
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
         <path
-          d="M4 4l16 16M20 4L4 20"
+          d="M22.54 6.42a2.78 2.78 0 0 0-1.95-2C18.88 4 12 4 12 4s-6.88 0-8.59.42a2.78 2.78 0 0 0-1.95 2A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 2C5.12 20 12 20 12 20s6.88 0 8.59-.42a2.78 2.78 0 0 0 1.95-2A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"
+          fill="none"
           stroke="currentColor"
           strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path d="M10 15.5l5-3.5-5-3.5z" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    label: 'Pinterest',
+    href: 'https://www.pinterest.com/WholeSaleForEveryone',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+        <circle
+          cx="12"
+          cy="12"
+          r="9"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <path
+          d="M10.6 18l1.6-6.1m-.6-1.8a2.3 2.3 0 1 1 3.9 1.7c-.4 1.6-1.9 2.5-3.3 2.1"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
           strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
+  {
+    label: 'LinkedIn',
+    href: 'https://www.linkedin.com/company/wholesaleforeveryone',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+        <path
+          d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4V8h4v1.5A5 5 0 0 1 16 8z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <rect
+          x="2"
+          y="9"
+          width="4"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <circle
+          cx="4"
+          cy="4"
+          r="2"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
         />
       </svg>
     ),

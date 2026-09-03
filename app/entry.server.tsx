@@ -24,6 +24,9 @@ export default async function handleRequest(
       'data:',
       'https://cdn.shopify.com',
       'https://images.unsplash.com',
+      // NetX Media CDN (WFE) — where the wizard/PDP host uploaded logos + design
+      // proofs; the cart renders these as <img>, so the origin must be allowed.
+      'https://media.wholesaleforeveryone.com',
     ],
   });
 

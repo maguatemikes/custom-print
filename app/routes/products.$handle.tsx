@@ -325,7 +325,7 @@ export default function Product() {
         />
         <div className="grid gap-8 lg:grid-cols-[3fr_2fr] lg:gap-12">
           {/* Gallery */}
-          <div className="lg:sticky lg:top-28 lg:self-start">
+          <div className="min-w-0 lg:sticky lg:top-28 lg:self-start">
             <ProductGallery
               images={galleryImages}
               title={title}
@@ -347,7 +347,7 @@ export default function Product() {
           </div>
 
           {/* Product info */}
-          <div className="lg:py-2">
+          <div className="min-w-0 lg:py-2">
             <h1 className="text-3xl font-extrabold uppercase leading-tight tracking-tight md:text-4xl">
               {title}
             </h1>
@@ -618,7 +618,7 @@ async function buildDesignProof(
   scale: number,
   rotateDeg: number,
 ): Promise<string | null> {
-  const SIZE = 700;
+  const SIZE = 1200;
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;

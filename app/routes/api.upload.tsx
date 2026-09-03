@@ -1,8 +1,9 @@
 import type {Route} from './+types/api.upload';
-import {uploadToShopifyFiles} from '~/lib/shopifyFiles.server';
+import {uploadToNetX} from '~/lib/netx.server';
 
 /**
- * POST /api/upload — hosts an image on Shopify Files and returns its CDN URL.
+ * POST /api/upload — hosts an image on the NetX Media CDN (WFE) as a public,
+ * edge-cached asset and returns its URL.
  * Body: { dataUrl: "data:<mime>;base64,...", filename: string }
  * Response: { url } on success, { error } otherwise.
  */
@@ -60,7 +61,7 @@ export async function action({request, context}: Route.ActionArgs) {
       );
     }
 
-    const url = await uploadToShopifyFiles(context.env, {
+    const url = await uploadToNetX(context.env, {
       filename,
       mimeType,
       bytes,

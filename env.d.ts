@@ -8,9 +8,14 @@ import '@total-typescript/ts-reset';
 
 declare global {
   interface Env {
-    // Admin API access token (`write_files` scope) for hosting logo +
-    // design-output images on Shopify Files (cdn.shopify.com). This is a
-    // rotating `shpca_` token; used as a fallback if the broker below can't run.
+    // NetX Media CDN (WFE) — the wizard/PDP host logo + design-output images here
+    // as PUBLIC, edge-cached assets (media.wholesaleforeveryone.com). Bearer key
+    // is server-only; never expose to the client.
+    NETX_API_KEY?: string;
+    NETX_API_BASE_URL?: string;
+    // Admin API access token (`write_files` scope) — legacy Shopify Files upload
+    // path (cdn.shopify.com), no longer used for uploads; kept for other Admin API
+    // needs (token broker below). Rotating `shpca_` token.
     PRIVATE_ADMIN_API_TOKEN?: string;
     // Client credentials for the token-rotation broker. When both are set the
     // app auto-mints/refreshes the Admin token from them (client-credentials

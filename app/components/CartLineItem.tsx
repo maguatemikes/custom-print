@@ -74,6 +74,11 @@ export function CartLineItem({
               height={80}
               width={80}
               loading="lazy"
+              // NetX (media.wholesaleforeveryone.com) has hotlink protection: it
+              // 403s any image request carrying a cross-origin Referer. Omitting
+              // the referer makes the request pass — without this the proof shows
+              // as a broken image in the cart on every non-NetX origin.
+              referrerPolicy="no-referrer"
               className="h-20 w-20 rounded-xl bg-mint object-contain"
             />
           ) : baseColour ? (

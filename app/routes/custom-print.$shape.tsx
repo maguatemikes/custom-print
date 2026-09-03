@@ -632,7 +632,7 @@ export default function CustomDesign() {
       // Try twice — a transient upload hiccup shouldn't drop the proof.
       for (let attempt = 0; attempt < 2 && !cancelled; attempt++) {
         try {
-          const png = await svgToPng(svg, 600, shape === 'Triangle');
+          const png = await svgToPng(svg, 1200, shape === 'Triangle');
           const url = await uploadImage(png, filename);
           if (url) return url;
         } catch {
