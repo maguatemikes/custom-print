@@ -1,5 +1,6 @@
 import {memo} from 'react';
 import type {LogoMark} from '~/lib/customPrintData';
+import {FULL_PRINT_FILL, TRI_FULL_CENTER} from '~/lib/customPrintData';
 
 function BandanaPreviewImpl({
   shape,
@@ -10,6 +11,8 @@ function BandanaPreviewImpl({
   seamless = false,
   logoRotate,
   logoScale,
+  posX = 50,
+  posY = 50,
   colSpace = 100,
   rowSpace = 100,
   compact,
@@ -27,6 +30,8 @@ function BandanaPreviewImpl({
   seamless?: boolean;
   logoRotate: number;
   logoScale: number;
+  posX?: number;
+  posY?: number;
   colSpace?: number;
   rowSpace?: number;
   compact?: boolean;
@@ -59,6 +64,11 @@ function BandanaPreviewImpl({
   // colour — rasterization-safe (a plain polygon, unlike an SVG clip-path).
   const triMask = 'M-200 -200 L200 -200 L200 200 Z';
   const art = `rotate(${logoRotate}) scale(${logoScale / 100})`;
+  // Full-print pan offset (posX/posY are % of canvas; 50/50 = centred). Maps to
+  // the −200…200 SVG space so dragging the edge-to-edge design shifts it.
+  const offX = ((posX - 50) / 50) * 200;
+  const offY = ((posY - 50) / 50) * 200;
+  const fullArt = `translate(${offX} ${offY}) ${art}`;
 
   // Placeholder ink flips to light on dark bases so it stays visible on any
   // base colour (adaptive contrast rather than a fixed dark tone).
@@ -183,10 +193,21 @@ function BandanaPreviewImpl({
                         strokeDasharray="9 9"
                       />
                     ))}
+                    {/* Centred on the canvas for the square; on the triangle
+                        that lands on the hypotenuse and half the word gets
+                        masked away, so there we move it onto the fold's centroid
+                        and rotate it to run parallel to the hypotenuse — fully
+                        inside the triangle and readable. */}
                     <text
                       x="0"
-                      y="6"
+                      y={isTriangle ? 0 : 6}
                       textAnchor="middle"
+                      dominantBaseline={isTriangle ? 'central' : undefined}
+                      transform={
+                        isTriangle
+                          ? `translate(${TRI_FULL_CENTER.x} ${TRI_FULL_CENTER.y}) rotate(45)`
+                          : undefined
+                      }
                       fontSize="15"
                       fontWeight="700"
                       fill={phText}
@@ -203,14 +224,18 @@ function BandanaPreviewImpl({
                    (−67, 67) so it sits in the middle of the fold, not on the
                    hypotenuse; the square keeps canvas-centre. */
                 <g
-                  transform={`${isTriangle ? 'translate(-67 67) ' : ''}${art}`}
+                  transform={`${
+                    isTriangle
+                      ? `translate(${TRI_FULL_CENTER.x} ${TRI_FULL_CENTER.y}) `
+                      : ''
+                  }${fullArt}`}
                 >
                   <image
                     href={logoPreview}
-                    x="-200"
-                    y="-200"
-                    width="400"
-                    height="400"
+                    x={-(400 * FULL_PRINT_FILL) / 2}
+                    y={-(400 * FULL_PRINT_FILL) / 2}
+                    width={400 * FULL_PRINT_FILL}
+                    height={400 * FULL_PRINT_FILL}
                     preserveAspectRatio="xMidYMid slice"
                   />
                 </g>

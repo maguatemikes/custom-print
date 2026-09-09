@@ -10,6 +10,7 @@ import {
   Await,
   Link,
   useLoaderData,
+  useSearchParams,
   redirect,
   type ShouldRevalidateFunction,
 } from 'react-router';
@@ -32,6 +33,7 @@ import {
   shapeRouteFor,
   normalizeSize,
   SHAPE_ROUTES,
+  TRI_FULL_CENTER,
 } from '~/lib/customPrintData';
 import {svgToPng, uploadImage} from '~/lib/customPrintProof';
 import {
@@ -39,6 +41,7 @@ import {
   BlankDesignNotice,
 } from '~/components/custom-print/primitives';
 import {BandanaPreview} from '~/components/custom-print/BandanaPreview';
+import {FullPrintEditor} from '~/components/custom-print/FullPrintEditor';
 import {BandanaStep} from '~/components/custom-print/BandanaStep';
 import {DesignStep} from '~/components/custom-print/DesignStep';
 import {QuantityStep} from '~/components/custom-print/QuantityStep';
@@ -306,6 +309,8 @@ export default function CustomDesign() {
   // it. Two-side currently prints the same design on both faces.
   const [printSides, setPrintSides] = useState<'blank' | 'one' | 'two'>('one');
   const [qty, setQty] = useState<number>(MIN_QTY);
+  // Seamless handoff from the Price Estimator (?size=…&qty=…) — read below.
+  const [searchParams, setSearchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [deliveryAck, setDeliveryAck] = useState(false);
   const [terms, setTerms] = useState(false);
@@ -322,6 +327,10 @@ export default function CustomDesign() {
   const [logoError, setLogoError] = useState<string | null>(null);
   const [logoRotate, setLogoRotate] = useState(0);
   const [logoScale, setLogoScale] = useState(100);
+  // Full-print artwork position (% of the canvas; 50/50 = centred). Only the
+  // Full-print layout uses it — the customer drags the edge-to-edge design to
+  // pan it. Repeating layouts position by their marks, so this is a no-op there.
+  const [logoPos, setLogoPos] = useState({x: 50, y: 50});
   // Column / row spacing of a repeating layout (100% = the preset positions).
   // Spreads the logos apart from their group centre; fly-off the edge is allowed.
   const [colSpace, setColSpace] = useState(100);
@@ -346,6 +355,7 @@ export default function CustomDesign() {
   const [backPattern, setBackPattern] = useState<string>(defaultPattern);
   const [backLogoRotate, setBackLogoRotate] = useState(0);
   const [backLogoScale, setBackLogoScale] = useState(100);
+  const [backLogoPos, setBackLogoPos] = useState({x: 50, y: 50});
   const [backColSpace, setBackColSpace] = useState(100);
   const [backRowSpace, setBackRowSpace] = useState(100);
   const [backLogoUrl, setBackLogoUrl] = useState<string | null>(null);
@@ -392,6 +402,7 @@ export default function CustomDesign() {
         backPattern: string;
         backLogoRotate: number;
         backLogoScale: number;
+        backLogoPos: {x: number; y: number};
         backColSpace: number;
         backRowSpace: number;
         qty: number;
@@ -403,6 +414,7 @@ export default function CustomDesign() {
         pattern: string;
         logoRotate: number;
         logoScale: number;
+        logoPos: {x: number; y: number};
         colSpace: number;
         rowSpace: number;
       }>;
@@ -436,6 +448,7 @@ export default function CustomDesign() {
       if (s.backPattern) setBackPattern(s.backPattern);
       if (typeof s.backLogoRotate === 'number') setBackLogoRotate(s.backLogoRotate);
       if (typeof s.backLogoScale === 'number') setBackLogoScale(s.backLogoScale);
+      if (s.backLogoPos) setBackLogoPos(s.backLogoPos);
       if (typeof s.backColSpace === 'number') setBackColSpace(s.backColSpace);
       if (typeof s.backRowSpace === 'number') setBackRowSpace(s.backRowSpace);
       if (s.qty) setQty(s.qty);
@@ -447,6 +460,7 @@ export default function CustomDesign() {
       if (s.pattern) setPattern(s.pattern);
       if (typeof s.logoRotate === 'number') setLogoRotate(s.logoRotate);
       if (typeof s.logoScale === 'number') setLogoScale(s.logoScale);
+      if (s.logoPos) setLogoPos(s.logoPos);
       if (typeof s.colSpace === 'number') setColSpace(s.colSpace);
       if (typeof s.rowSpace === 'number') setRowSpace(s.rowSpace);
       }
@@ -456,6 +470,49 @@ export default function CustomDesign() {
     setHydrated(true);
     // Restore runs once on mount only; sizeNames/storageKey are read as initial
     // values on purpose (re-running would re-restore and clobber live edits).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Seamless handoff from the Price Estimator: `?size=…&qty=…` pre-fills the
+  // wizard (shape is already fixed by the route). Runs AFTER restore so an
+  // explicit "start my order at these specs" click wins over saved/default
+  // values. Size is matched space-/case-insensitively against the real product
+  // sizes; quantity is clamped to the minimum order. Both are ignored unless
+  // valid, so junk in the URL can never put the wizard into a bad state.
+  //
+  // It's a ONE-SHOT hand-off: after consuming the params we strip them from the
+  // URL (replace, no history entry) so a later refresh falls back to the normal
+  // saved-progress restore instead of re-overriding a size/qty the shopper has
+  // since changed in the wizard. The empty deps array keeps this mount-only —
+  // clearing the params re-renders but does not re-run this effect.
+  useEffect(() => {
+    const sizeParam = searchParams.get('size');
+    const qtyParam = searchParams.get('qty');
+    if (!sizeParam && !qtyParam) return;
+    if (sizeParam) {
+      const match = sizeNames.find(
+        (n) => normalizeSize(n) === normalizeSize(sizeParam),
+      );
+      if (match) setSize(match);
+    }
+    if (qtyParam) {
+      const n = Math.floor(Number(qtyParam));
+      if (Number.isFinite(n) && n >= MIN_QTY) setQty(n);
+    }
+    // Arriving from the estimator is the start of a fresh order — send the
+    // shopper to the first step, overriding any mid-way step the restore above
+    // just loaded (and clearing its re-upload notice), so "Start your order"
+    // always begins at the beginning rather than resuming saved progress.
+    setStep(0);
+    setReuploadNotice(false);
+    setSearchParams(
+      (prev) => {
+        prev.delete('size');
+        prev.delete('qty');
+        return prev;
+      },
+      {replace: true},
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -485,10 +542,12 @@ export default function CustomDesign() {
             backPattern,
             backLogoRotate,
             backLogoScale,
+            backLogoPos,
             backColSpace,
             backRowSpace,
             logoRotate,
             logoScale,
+            logoPos,
             colSpace,
             rowSpace,
           }),
@@ -517,10 +576,12 @@ export default function CustomDesign() {
     backPattern,
     backLogoRotate,
     backLogoScale,
+    backLogoPos,
     backColSpace,
     backRowSpace,
     logoRotate,
     logoScale,
+    logoPos,
     colSpace,
     rowSpace,
   ]);
@@ -773,6 +834,8 @@ export default function CustomDesign() {
   const dSetRotate = showBack ? setBackLogoRotate : setLogoRotate;
   const dScale = showBack ? backLogoScale : logoScale;
   const dSetScale = showBack ? setBackLogoScale : setLogoScale;
+  const dPos = showBack ? backLogoPos : logoPos;
+  const dSetPos = showBack ? setBackLogoPos : setLogoPos;
   const dCol = showBack ? backColSpace : colSpace;
   const dSetCol = showBack ? setBackColSpace : setColSpace;
   const dRow = showBack ? backRowSpace : rowSpace;
@@ -925,22 +988,42 @@ export default function CustomDesign() {
         <div className="grid gap-8 lg:grid-cols-[3fr_2fr] lg:gap-12">
           {/* Left — live preview (same footprint as the PDP gallery) */}
           <div className="lg:sticky lg:top-28 lg:self-start">
-            <BandanaPreview
-              shape={shape}
-              baseColor={baseColor}
-              logoPreview={dLogo?.preview ?? null}
-              marks={pvMarks}
-              fullDesign={pvFull}
-              seamless={pvSeamless}
-              logoRotate={dRotate}
-              logoScale={dScale}
-              colSpace={dCol}
-              rowSpace={dRow}
-              blank={isBlank}
-              badge={previewBadge}
-              flipSide={isDiff ? activeSide : null}
-              onFlip={setActiveSide}
-            />
+            <FullPrintEditor
+              active={pvFull && !isBlank && !!dLogo?.preview}
+              pos={dPos}
+              onPosChange={dSetPos}
+              scale={dScale}
+              onScaleChange={dSetScale}
+              rotate={dRotate}
+              onRotateChange={dSetRotate}
+              // Triangle designs are drawn on the fold's centroid, so the box
+              // anchors there too (canvas-% = SVG units ÷ 4). Square centres on
+              // the canvas.
+              anchor={
+                shape === 'Triangle'
+                  ? {x: TRI_FULL_CENTER.x / 4, y: TRI_FULL_CENTER.y / 4}
+                  : {x: 0, y: 0}
+              }
+            >
+              <BandanaPreview
+                shape={shape}
+                baseColor={baseColor}
+                logoPreview={dLogo?.preview ?? null}
+                marks={pvMarks}
+                fullDesign={pvFull}
+                seamless={pvSeamless}
+                logoRotate={dRotate}
+                logoScale={dScale}
+                posX={dPos.x}
+                posY={dPos.y}
+                colSpace={dCol}
+                rowSpace={dRow}
+                blank={isBlank}
+                badge={previewBadge}
+                flipSide={isDiff ? activeSide : null}
+                onFlip={setActiveSide}
+              />
+            </FullPrintEditor>
 
             {/* Hidden per-side proof canvases — rasterized to PNG on the Quote
                 step. Front always; back only for two-sided "different". Kept in
@@ -966,6 +1049,8 @@ export default function CustomDesign() {
                   seamless={seamless}
                   logoRotate={logoRotate}
                   logoScale={logoScale}
+                  posX={logoPos.x}
+                  posY={logoPos.y}
                   colSpace={colSpace}
                   rowSpace={rowSpace}
                   proofLabel="front-proof"
@@ -980,6 +1065,8 @@ export default function CustomDesign() {
                     seamless={backSeamless}
                     logoRotate={backLogoRotate}
                     logoScale={backLogoScale}
+                    posX={backLogoPos.x}
+                    posY={backLogoPos.y}
                     colSpace={backColSpace}
                     rowSpace={backRowSpace}
                     proofLabel="back-proof"
@@ -1067,6 +1154,8 @@ export default function CustomDesign() {
                       seamless={seamless}
                       logoRotate={logoRotate}
                       logoScale={logoScale}
+                      posX={logoPos.x}
+                      posY={logoPos.y}
                       colSpace={colSpace}
                       rowSpace={rowSpace}
                       compact
@@ -1082,6 +1171,8 @@ export default function CustomDesign() {
                       seamless={backSeamless}
                       logoRotate={backLogoRotate}
                       logoScale={backLogoScale}
+                      posX={backLogoPos.x}
+                      posY={backLogoPos.y}
                       colSpace={backColSpace}
                       rowSpace={backRowSpace}
                       compact
@@ -1156,6 +1247,8 @@ export default function CustomDesign() {
                               seamless={seamless}
                               logoRotate={logoRotate}
                               logoScale={logoScale}
+                              posX={logoPos.x}
+                              posY={logoPos.y}
                               colSpace={colSpace}
                               rowSpace={rowSpace}
                               compact
@@ -1176,6 +1269,8 @@ export default function CustomDesign() {
                               seamless={backSeamless}
                               logoRotate={backLogoRotate}
                               logoScale={backLogoScale}
+                              posX={backLogoPos.x}
+                              posY={backLogoPos.y}
                               colSpace={backColSpace}
                               rowSpace={backRowSpace}
                               compact
@@ -1196,6 +1291,8 @@ export default function CustomDesign() {
                         seamless={seamless}
                         logoRotate={logoRotate}
                         logoScale={logoScale}
+                        posX={logoPos.x}
+                        posY={logoPos.y}
                         colSpace={colSpace}
                         rowSpace={rowSpace}
                         blank={isBlank}

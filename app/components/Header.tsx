@@ -75,6 +75,8 @@ function buildNav(
       leadLabel: 'All made-to-order',
       children: shapeLinks.length ? shapeLinks : undefined,
     },
+    // Standalone page — the live price-estimator calculator. No dropdown.
+    {title: 'Price Estimator', to: '/price-estimator'},
   ];
 }
 

@@ -1274,9 +1274,38 @@ function PersonalizeSection({
             type="button"
             onClick={() => void handlePrepare()}
             disabled={preparing || uploading || !baseReady}
-            className="btn btn-dark w-full min-h-11 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-busy={preparing}
+            className={`btn btn-dark w-full min-h-11 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40 ${
+              preparing ? 'cursor-wait' : ''
+            }`}
           >
-            {preparing ? 'Preparing your design…' : 'Prepare my design'}
+            {preparing ? (
+              <>
+                <svg
+                  className="h-4 w-4 animate-spin"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-90"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                Preparing your design…
+              </>
+            ) : (
+              'Prepare my design'
+            )}
           </button>
         ) : (
           <>

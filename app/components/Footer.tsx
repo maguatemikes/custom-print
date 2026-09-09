@@ -21,9 +21,10 @@ const COLUMNS = [
     title: 'Company',
     links: [
       {label: 'About Us', to: '/pages/about'},
+      {label: 'Contact Us', to: '/pages/contact'},
+      {label: 'Returns & Refunds', to: '/pages/refund-returns'},
+      {label: 'Privacy Policy', to: '/pages/privacy-policy'},
       {label: 'Journal', to: '/blogs'},
-      {label: 'Sustainability', to: '/pages/about'},
-      {label: 'Careers', to: '/pages/about'},
     ],
   },
 ];

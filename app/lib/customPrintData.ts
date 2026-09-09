@@ -26,13 +26,13 @@ export const SHAPE_ROUTES: Record<string, ShapeRoute> = {
   square: {
     label: 'Square',
     handle: 'custom-square-bandana-wizard',
-    defaultPattern: 'single',
+    defaultPattern: 'full',
     blurb: 'The classic four-sided bandana — from 14″ up to 27″.',
   },
   triangle: {
     label: 'Triangle',
     handle: 'custom-triangle-bandana-wizard',
-    defaultPattern: 'tri-single',
+    defaultPattern: 'tri-full',
     blurb: 'Pre-folded, pointed cut — sized by leg × long edge × leg.',
   },
 };
@@ -94,6 +94,23 @@ export const DEFAULT_SIZE: Record<string, string> = {
 };
 
 export const MIN_QTY = 12;
+
+// The Full-print design fills this fraction of the bandana at 100% size — a
+// sensible starting size the customer resizes UP (toward edge-to-edge) or down
+// and drags, rather than being blown up to full-bleed on upload. Shared by
+// BandanaPreview (the SVG image) and FullPrintEditor (the selection box) so the
+// box always wraps the rendered design.
+export const FULL_PRINT_FILL = 0.6;
+
+// Where a Full-print design is centred on the TRIANGLE fold: the triangle's
+// centroid in the preview's SVG space (viewBox 0 0 400 400, drawn from a
+// translate(200 200) origin, so this is in −200…200 units). The square centres
+// on the canvas (0,0); the triangle centres here so artwork sits in the middle
+// of the fold instead of on the hypotenuse. Shared by BandanaPreview (the SVG
+// image transform) and FullPrintEditor (the selection-box anchor) so the box
+// tracks the rendered design on the triangle exactly as it does on the square.
+// As a fraction of the 400-unit canvas: divide by 4 to get a canvas-% offset.
+export const TRI_FULL_CENTER = {x: -67, y: 67};
 
 /* -------------------------------------------------------------------------- */
 /* Tiered pricing — derived from the Jurong supplier cost sheet × MARKUP       */
@@ -224,7 +241,6 @@ export const PATTERNS: Array<{
   // Full print renders edge-to-edge (the `full` flag drives the <image> branch);
   // it has no per-logo marks, so the array stays empty.
   {value: 'full', label: 'Full print', full: true, marks: []},
-  {value: 'single', label: 'Single', marks: [{x: 0, y: 0, rot: 0}]},
   {
     value: 'diagonal',
     label: 'Diagonal ×3',
@@ -267,7 +283,6 @@ export const PATTERNS: Array<{
 // balanced inside the triangle so logos don't crowd the edges/hypotenuse.
 export const TRI_PATTERNS: typeof PATTERNS = [
   {value: 'tri-full', label: 'Full print', full: true, marks: []},
-  {value: 'tri-single', label: 'Center', marks: [{x: -28, y: 28, rot: 0}]},
   {
     value: 'tri-corners',
     label: 'Corners ×3',

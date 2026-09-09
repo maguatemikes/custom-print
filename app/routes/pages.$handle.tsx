@@ -77,11 +77,33 @@ export default function Page() {
   const {page} = useLoaderData<typeof loader>();
 
   return (
-    <div className="page">
-      <header>
-        <h1>{page.title}</h1>
-      </header>
-      <main dangerouslySetInnerHTML={{__html: page.body}} />
+    <div className="bg-paper">
+      {/* Same ink hero as the designed policy/about/contact pages, so a generic
+          Shopify CMS page (e.g. "Your Privacy Choices") reads as part of the
+          site instead of raw black-on-white body copy. */}
+      <section className="relative overflow-hidden bg-ink text-white">
+        <div
+          className="pointer-events-none absolute -right-20 top-1/2 h-96 w-96 -translate-y-1/2 rounded-full bg-brand-600/40 blur-3xl"
+          aria-hidden="true"
+        />
+        <div className="ui-container relative py-20 md:py-28">
+          <h1 className="max-w-3xl text-5xl font-extrabold uppercase leading-[0.95] tracking-tight md:text-7xl">
+            {page.title}
+          </h1>
+        </div>
+      </section>
+
+      {/* Shopify HTML, typeset via descendant utilities (no prose plugin): the
+          body is raw markup, so headings/paragraphs/lists/links are styled by
+          child selectors to match the hand-built policy pages. */}
+      <section className="bg-paper">
+        <div className="ui-container py-16 md:py-24">
+          <div
+            className="max-w-3xl text-base leading-relaxed text-muted [&_a:hover]:underline [&_a]:font-semibold [&_a]:text-brand-700 [&_a]:underline-offset-4 [&_h2:first-child]:mt-0 [&_h2]:mt-10 [&_h2]:text-2xl [&_h2]:font-extrabold [&_h2]:uppercase [&_h2]:tracking-tight [&_h2]:text-ink [&_h3]:mt-8 [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-ink [&_li]:leading-relaxed [&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_ol]:marker:text-brand-500 [&_p:first-child]:mt-0 [&_p]:mt-4 [&_strong]:font-semibold [&_strong]:text-ink [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_ul]:marker:text-brand-500"
+            dangerouslySetInnerHTML={{__html: page.body}}
+          />
+        </div>
+      </section>
     </div>
   );
 }
