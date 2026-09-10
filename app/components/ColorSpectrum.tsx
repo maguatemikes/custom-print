@@ -95,6 +95,44 @@ type Model = 'hex' | 'rgb' | 'cmyk' | 'pantone';
  * Shared by the PDP "Personalize me" flow and the custom-print wizard
  * so both use an identical control.
  */
+// Compact labelled number box (R / G / B / C / M / Y / K) for the numeric
+// models. Module-scope on purpose: defined inside the render it would be a new
+// component type every render and remount — stealing focus mid-typing.
+function NumBox({
+  label,
+  value: val,
+  max,
+  onCommit,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  onCommit: (n: number) => void;
+  suffix?: string;
+}) {
+  return (
+    <label className="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-[#f5f5f5] px-2.5 transition focus-within:ring-2 focus-within:ring-brand-500/30">
+      <span className="shrink-0 text-xs font-semibold leading-none text-muted">
+        {label}
+      </span>
+      <input
+        value={Math.round(val)}
+        inputMode="numeric"
+        onChange={(e) => {
+          const n = Number(e.target.value.replace(/[^\d]/g, ''));
+          if (Number.isFinite(n)) onCommit(Math.min(max, Math.max(0, n)));
+        }}
+        aria-label={label}
+        className="m-0 min-w-0 flex-1 border-0 bg-transparent p-0 text-center text-sm leading-none tabular-nums text-ink focus:outline-none focus:ring-0"
+      />
+      {suffix ? (
+        <span className="shrink-0 text-xs leading-none text-muted">{suffix}</span>
+      ) : null}
+    </label>
+  );
+}
+
 export function ColorSpectrum({
   value,
   onChange,
@@ -110,6 +148,11 @@ export function ColorSpectrum({
   const [hexText, setHexText] = useState(value);
   const svRef = useRef<HTMLDivElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
+  // True while the user is actively dragging a slider/field. During a drag the
+  // picker's live HSV runs a frame AHEAD of the `value` it emits, so the external
+  // sync effect must stand down or it yanks the picker back to the lagging colour
+  // (the fast-change flicker).
+  const interacting = useRef(false);
 
   // Native eyedropper (Chromium only) — detected after mount so SSR and the
   // first client render agree (window is absent on the server).
@@ -129,6 +172,32 @@ export function ColorSpectrum({
     setHexText(hex);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hex]);
+
+  // Re-sync the picker (spectrum + hex box) when `value` is set from OUTSIDE —
+  // e.g. a shared link or the estimator hand-off changes the base colour. The
+  // picker is otherwise self-controlled (HSV is its source of truth), so it only
+  // reads `value` at mount; without this the swatch/hex box would keep showing
+  // the old colour.
+  //
+  // The guard compares the incoming colour to what the picker is CURRENTLY
+  // showing, in RGB with a ±2/channel tolerance. Our own emitted `value` differs
+  // from the live HSV only by hsv↔hex rounding, so it's treated as "already
+  // showing this" and ignored — that stops the rounding ping-pong that made the
+  // picker flicker when a colour changed. A genuine external colour differs by
+  // far more than 2 and re-syncs.
+  useEffect(() => {
+    if (interacting.current) return;
+    const incoming = hexToRgb(value);
+    if (!incoming) return;
+    const current = hsvToRgb(h, s, v);
+    if (incoming.every((c, i) => Math.abs(c - current[i]) <= 2)) return;
+    const [nh, ns, nv] = rgbToHsv(incoming);
+    setH(nh);
+    setS(ns);
+    setV(nv);
+    setHexText(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   // The single apply-colour path every input funnels through.
   const applyRgb = ([nr, ng, nb]: [number, number, number]) => {
@@ -161,9 +230,11 @@ export function ColorSpectrum({
   const startDrag =
     (fn: (x: number, y: number) => void) => (e: React.PointerEvent) => {
       e.preventDefault();
+      interacting.current = true;
       fn(e.clientX, e.clientY);
       const move = (ev: PointerEvent) => fn(ev.clientX, ev.clientY);
       const up = () => {
+        interacting.current = false;
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', up);
       };
@@ -180,40 +251,6 @@ export function ColorSpectrum({
       /* user cancelled (AbortError) — leave the colour unchanged */
     }
   };
-
-  // Compact labelled number box (R / G / B) for the numeric models.
-  const NumBox = ({
-    label,
-    value: val,
-    max,
-    onCommit,
-    suffix,
-  }: {
-    label: string;
-    value: number;
-    max: number;
-    onCommit: (n: number) => void;
-    suffix?: string;
-  }) => (
-    <label className="flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-lg bg-[#f5f5f5] px-2.5 transition focus-within:ring-2 focus-within:ring-brand-500/30">
-      <span className="shrink-0 text-xs font-semibold leading-none text-muted">
-        {label}
-      </span>
-      <input
-        value={Math.round(val)}
-        inputMode="numeric"
-        onChange={(e) => {
-          const n = Number(e.target.value.replace(/[^\d]/g, ''));
-          if (Number.isFinite(n)) onCommit(Math.min(max, Math.max(0, n)));
-        }}
-        aria-label={label}
-        className="m-0 min-w-0 flex-1 border-0 bg-transparent p-0 text-center text-sm leading-none tabular-nums text-ink focus:outline-none focus:ring-0"
-      />
-      {suffix ? (
-        <span className="shrink-0 text-xs leading-none text-muted">{suffix}</span>
-      ) : null}
-    </label>
-  );
 
   const tabBtn = (m: Model) => (
     <button
@@ -311,13 +348,24 @@ export function ColorSpectrum({
               applyHex(t);
             }}
             onPaste={(e) => {
-              // Apply a pasted hex directly — including 3-digit shorthand
-              // (#0f0) that onChange's 6-digit parse would miss.
-              const norm = normalizeHex(e.clipboardData.getData('text'));
+              // Render whatever the shopper pastes: a clean/shorthand hex, a hex
+              // buried in a larger string ("background:#ff6600;" copied from CSS
+              // or a design tool), or an rgb()/rgba() value.
+              const raw = e.clipboardData.getData('text');
+              const hashed = raw.match(/#(?:[0-9a-f]{6}|[0-9a-f]{3})\b/i)?.[0];
+              const norm = normalizeHex(raw) ?? (hashed ? normalizeHex(hashed) : null);
+              const rgbM = raw.match(
+                /rgba?\(\s*(\d{1,3})\D+(\d{1,3})\D+(\d{1,3})/i,
+              );
               if (norm) {
                 e.preventDefault();
                 setHexText(norm);
                 applyHex(norm);
+              } else if (rgbM) {
+                e.preventDefault();
+                const clamp = (n: string) =>
+                  Math.min(255, Math.max(0, Number(n)));
+                applyRgb([clamp(rgbM[1]), clamp(rgbM[2]), clamp(rgbM[3])]);
               }
             }}
             onBlur={() => {

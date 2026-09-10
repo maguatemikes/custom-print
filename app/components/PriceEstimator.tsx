@@ -286,8 +286,8 @@ export function PriceEstimator() {
 
         <Link
           to={`/custom-print/${shape.toLowerCase()}?size=${encodeURIComponent(
-            size,
-          )}&qty=${qty}`}
+            size.replace(/\s+/g, ''),
+          )}&qty=${qty}&start=1`}
           className="btn mt-5 w-full bg-orange-500 text-white transition-colors hover:bg-orange-600"
         >
           Start your order

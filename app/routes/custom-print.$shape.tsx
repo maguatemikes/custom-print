@@ -36,6 +36,7 @@ import {
   TRI_FULL_CENTER,
 } from '~/lib/customPrintData';
 import {svgToPng, uploadImage} from '~/lib/customPrintProof';
+import {setProofThumb} from '~/lib/proofThumbs';
 import {
   ProgressBar,
   BlankDesignNotice,
@@ -264,6 +265,15 @@ export async function loader({context, params}: Route.LoaderArgs) {
 /* Route                                                                      */
 /* -------------------------------------------------------------------------- */
 
+// Print option ↔ shareable URL value. Internally the wizard uses one/two/blank;
+// the URL shows the human-readable single/double/solid.
+const PRINT_TO_URL = {one: 'single', two: 'double', blank: 'solid'} as const;
+const URL_TO_PRINT: Record<string, 'one' | 'two' | 'blank'> = {
+  single: 'one',
+  double: 'two',
+  solid: 'blank',
+};
+
 export default function CustomDesign() {
   const {variants, currencyCode, productTitle, productHandle, shape, slug, defaultPattern, otherShapes} =
     useLoaderData<typeof loader>();
@@ -488,31 +498,56 @@ export default function CustomDesign() {
   useEffect(() => {
     const sizeParam = searchParams.get('size');
     const qtyParam = searchParams.get('qty');
-    if (!sizeParam && !qtyParam) return;
+    const colorParam = searchParams.get('color');
+    const printParam = searchParams.get('print');
+    const layoutParam = searchParams.get('layout');
+    const startParam = searchParams.get('start');
+    if (
+      !sizeParam &&
+      !qtyParam &&
+      !colorParam &&
+      !printParam &&
+      !layoutParam &&
+      !startParam
+    )
+      return;
     if (sizeParam) {
       const match = sizeNames.find(
         (n) => normalizeSize(n) === normalizeSize(sizeParam),
       );
       if (match) setSize(match);
     }
+    if (colorParam && /^[0-9a-fA-F]{6}$/.test(colorParam)) {
+      setBaseHex(`#${colorParam.toLowerCase()}`);
+    }
     if (qtyParam) {
       const n = Math.floor(Number(qtyParam));
       if (Number.isFinite(n) && n >= MIN_QTY) setQty(n);
     }
-    // Arriving from the estimator is the start of a fresh order — send the
-    // shopper to the first step, overriding any mid-way step the restore above
-    // just loaded (and clearing its re-upload notice), so "Start your order"
-    // always begins at the beginning rather than resuming saved progress.
-    setStep(0);
-    setReuploadNotice(false);
-    setSearchParams(
-      (prev) => {
-        prev.delete('size');
-        prev.delete('qty');
-        return prev;
-      },
-      {replace: true},
-    );
+    // Print option — readable URL values single / double / solid.
+    if (printParam && URL_TO_PRINT[printParam]) {
+      setPrintSides(URL_TO_PRINT[printParam]);
+    }
+    // Design layout — validated against the patterns this shape actually offers
+    // (square vs triangle sets differ), so a stale/foreign value is ignored.
+    if (layoutParam && patternsFor(shape).some((p) => p.value === layoutParam)) {
+      setPattern(layoutParam);
+    }
+    // `?start=1` (the Price Estimator's "Start your order") means a fresh order:
+    // jump to the first step, clear the re-upload notice, and drop the flag.
+    // Plain shared links (size/color/qty, no `start`) leave the step to the
+    // saved-progress restore above, so a refresh resumes where the shopper was.
+    if (startParam) {
+      setStep(0);
+      setReuploadNotice(false);
+      setSearchParams(
+        (prev) => {
+          prev.delete('start');
+          return prev;
+        },
+        {replace: true, preventScrollReset: true},
+      );
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -585,6 +620,37 @@ export default function CustomDesign() {
     colSpace,
     rowSpace,
   ]);
+
+  // Shareable config: mirror size / colour / quantity into the URL
+  // (?size=&color=&qty=) so the address bar is always a shareable link and a
+  // refresh restores the same config. `replace` keeps it out of history (no spam
+  // while dragging the colour spectrum); the 250ms debounce coalesces rapid
+  // changes. Gated on `hydrated` so it never writes defaults over a restored or
+  // linked config. Price is derived from these, so it's never in the URL.
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => {
+      setSearchParams(
+        (prev) => {
+          // Clean size (drop spaces → 22x22, not 22+x+22) so the link reads
+          // cleanly.
+          if (size) prev.set('size', size.replace(/\s+/g, ''));
+          prev.set('color', baseHex.replace('#', ''));
+          prev.set('qty', String(qty));
+          prev.set('print', PRINT_TO_URL[printSides]);
+          // Layout only applies when we're actually printing (a solid-colour
+          // bandana has no design), so drop it in the blank case.
+          if (printSides === 'blank') prev.delete('layout');
+          else prev.set('layout', pattern);
+          return prev;
+        },
+        // `preventScrollReset` keeps the page where it is — updating the URL as
+        // the shopper edits must not jump the view back to the top.
+        {replace: true, preventScrollReset: true},
+      );
+    }, 250);
+    return () => clearTimeout(t);
+  }, [hydrated, size, baseHex, qty, printSides, pattern, setSearchParams]);
 
   // Artwork upload is DEFERRED to the Quote step (see the proof effect below), so
   // tests / tweaks / abandoned designs on the Design step never touch the CDN —
@@ -695,7 +761,19 @@ export default function CustomDesign() {
         try {
           const png = await svgToPng(svg, 1200, shape === 'Triangle');
           const url = await uploadImage(png, filename);
-          if (url) return url;
+          if (url) {
+            // Cache a tiny thumbnail keyed by the hosted URL so the cart drawer
+            // paints the design INSTANTLY instead of downloading the full 1200px
+            // proof (which left the cart thumbnail blank until it loaded).
+            // Best-effort — the order still carries the real URL either way.
+            try {
+              const thumb = await svgToPng(svg, 160, shape === 'Triangle');
+              setProofThumb(url, thumb);
+            } catch {
+              /* thumbnail is a nicety, never block the proof on it */
+            }
+            return url;
+          }
         } catch {
           /* retry */
         }

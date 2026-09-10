@@ -1,8 +1,10 @@
 import type {CartLineUpdateInput} from '@shopify/hydrogen/storefront-api-types';
 import type {CartLayout, LineItemChildrenMap} from '~/components/CartMain';
 import {CartForm, Image, Money, type OptimisticCartLine} from '@shopify/hydrogen';
+import {useEffect, useState} from 'react';
 import {useVariantUrl} from '~/lib/variants';
 import {MIN_ORDER_QTY} from '~/lib/cart';
+import {getProofThumb} from '~/lib/proofThumbs';
 import {Link} from 'react-router';
 import {useAside} from './Aside';
 import type {CartApiQueryFragment} from 'storefrontapi.generated';
@@ -44,6 +46,14 @@ export function CartLineItem({
   const designOutput = line.attributes?.find(
     (a) => a.key === 'Design output',
   )?.value;
+  // Paint the instant base64 thumbnail (cached at design time) if we have one,
+  // so the cart shows the design immediately instead of blank-until-the-full-
+  // 1200px-proof-downloads. Read after mount (client-only) to avoid a hydration
+  // mismatch; falls back to the hosted URL when there's no cached thumb.
+  const [proofThumb, setProofThumbState] = useState<string | null>(null);
+  useEffect(() => {
+    setProofThumbState(getProofThumb(designOutput));
+  }, [designOutput]);
   // A blank (no-print) bandana has no proof image — fall back to its solid base
   // colour so the cart shows the actual product, not an empty tile.
   const baseColour = line.attributes?.find(
@@ -69,7 +79,7 @@ export function CartLineItem({
             // The design proof (transparent for triangles) — object-contain so
             // the whole shape shows; bg-mint fills any transparent area on-brand.
             <img
-              src={designOutput}
+              src={proofThumb ?? designOutput}
               alt={`${product.title} — your design`}
               height={80}
               width={80}
