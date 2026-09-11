@@ -1,5 +1,5 @@
-import {useState} from 'react';
-import {Link} from 'react-router';
+import {useEffect, useState} from 'react';
+import {Link, useSearchParams} from 'react-router';
 import {SelectMenu} from '~/components/SelectMenu';
 import {
   tiersFor,
@@ -7,6 +7,7 @@ import {
   sizesFor,
   MIN_QTY,
   money,
+  normalizeSize,
 } from '~/lib/customPrintData';
 
 /**
@@ -15,12 +16,19 @@ import {
  * one copy so the numbers can never drift. Renders the grid only (pitch +
  * calculator card); the caller wraps it in its own section/background.
  */
-export function PriceEstimator() {
+export function PriceEstimator({
+  syncUrl = false,
+  showHeading = false,
+}: {syncUrl?: boolean; showHeading?: boolean} = {}) {
   const [shape, setShape] = useState<'Square' | 'Triangle'>('Square');
   const [size, setSize] = useState(DEFAULT_SIZE.Square);
+  // Printed (defaults to single-side print in the wizard) vs No print (solid
+  // colour). Feeds the shareable URL and the "Start your order" hand-off.
+  const [printed, setPrinted] = useState(true);
   // Quantity is the single source of truth — the stepper/field AND the ladder both
   // write it, and the active tier is derived from it (so the two always agree).
   const [qtyInput, setQtyInput] = useState(String(MIN_QTY));
+  const [searchParams, setSearchParams] = useSearchParams();
   const cc = 'USD';
 
   const sizes = sizesFor(shape);
@@ -46,6 +54,60 @@ export function PriceEstimator() {
     setShape(next);
     setSize(DEFAULT_SIZE[next]);
   }
+
+  // --- Shareable estimate (standalone /bandana-calculator page only) ---
+  // When `syncUrl` is on, bind shape/size/quantity to the URL so any estimate is
+  // a shareable link. Read once on mount so a shared link reproduces the numbers;
+  // these are the same params the wizard reads on "Start your order".
+  useEffect(() => {
+    if (!syncUrl) return;
+    const shapeParam = searchParams.get('shape');
+    const sizeParam = searchParams.get('size');
+    const qtyParam = searchParams.get('qty');
+    const nextShape: 'Square' | 'Triangle' =
+      shapeParam === 'triangle' ? 'Triangle' : 'Square';
+    if (shapeParam === 'square' || shapeParam === 'triangle') {
+      setShape(nextShape);
+    }
+    if (sizeParam) {
+      const match = sizesFor(nextShape).find(
+        (s) => normalizeSize(s.name) === normalizeSize(sizeParam),
+      );
+      setSize(match ? match.name : DEFAULT_SIZE[nextShape]);
+    } else if (shapeParam) {
+      // Shape given without a size → the shape's default size.
+      setSize(DEFAULT_SIZE[nextShape]);
+    }
+    if (qtyParam) {
+      const n = Math.floor(Number(qtyParam));
+      if (Number.isFinite(n) && n >= MIN_QTY) setQtyInput(String(n));
+    }
+    const printParam = searchParams.get('print');
+    if (printParam === 'solid' || printParam === 'none') setPrinted(false);
+    else if (printParam) setPrinted(true); // single / double / printed → printed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mirror the current estimate into the URL (replace, no scroll reset), so the
+  // page is always a shareable link. Debounced so typing a quantity doesn't spam
+  // history; size is written cleanly (22x22, not 22+x+22).
+  useEffect(() => {
+    if (!syncUrl) return;
+    const t = setTimeout(() => {
+      setSearchParams(
+        (prev) => {
+          prev.set('shape', shape.toLowerCase());
+          prev.set('size', size.replace(/\s+/g, ''));
+          prev.set('qty', String(qty));
+          // Printed maps to the wizard's single-side default; No print → solid.
+          prev.set('print', printed ? 'single' : 'solid');
+          return prev;
+        },
+        {replace: true, preventScrollReset: true},
+      );
+    }, 200);
+    return () => clearTimeout(t);
+  }, [syncUrl, shape, size, qty, printed, setSearchParams]);
 
   const perks = [
     'No setup, plate, or artwork fees',
@@ -98,38 +160,68 @@ export function PriceEstimator() {
 
       {/* Calculator card */}
       <div className="w-full rounded-3xl border border-black/10 bg-white p-6 shadow-[0_24px_60px_-32px_rgba(16,20,16,0.35)] md:p-8">
-        <p className="text-lg font-extrabold uppercase tracking-tight text-ink">
-          Instant price estimate
-        </p>
+        {showHeading ? (
+          // Real page h1 + a dynamic h2 that names the exact product the shopper
+          // is pricing (shape + size + the default 100% cotton material). Good
+          // for SEO and orientation; only on the standalone calculator page.
+          <div className="mb-5">
+            <h1 className="text-2xl font-extrabold uppercase leading-tight tracking-tight text-ink md:text-3xl">
+              Custom Print Bandanas
+            </h1>
+            <h2 className="mt-0.5 text-base font-semibold text-brand-700 md:text-lg">
+              Solid {shape} Bandana · {size} in · 100% Cotton · Price Estimator
+            </h2>
+          </div>
+        ) : (
+          <p className="text-lg font-extrabold uppercase tracking-tight text-ink">
+            Instant price estimate
+          </p>
+        )}
 
-        {/* Shape — full width on top */}
-        <div className="mt-3">
-          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
-            Shape
-          </span>
-          <SelectMenu
-            ariaLabel="Shape"
-            value={shape}
-            onChange={(v) => {
-              if (v === 'Square' || v === 'Triangle') pickShape(v);
-            }}
-            options={[
-              {value: 'Square', label: 'Square solid color bandana'},
-              {value: 'Triangle', label: 'Triangle solid color bandana'},
-              {
-                value: 'Rectangle',
-                label: 'Rectangle solid color bandana',
-                meta: 'Coming soon',
-                disabled: true,
-              },
-              {
-                value: 'Fabric roll',
-                label: 'Fabric roll',
-                meta: 'Coming soon',
-                disabled: true,
-              },
-            ]}
-          />
+        {/* Shape | Print — two columns */}
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+              Shape
+            </span>
+            <SelectMenu
+              ariaLabel="Shape"
+              value={shape}
+              onChange={(v) => {
+                if (v === 'Square' || v === 'Triangle') pickShape(v);
+              }}
+              options={[
+                {value: 'Square', label: 'Square solid color bandana'},
+                {value: 'Triangle', label: 'Triangle solid color bandana'},
+                {
+                  value: 'Rectangle',
+                  label: 'Rectangle solid color bandana',
+                  meta: 'Coming soon',
+                  disabled: true,
+                },
+                {
+                  value: 'Fabric roll',
+                  label: 'Fabric roll',
+                  meta: 'Coming soon',
+                  disabled: true,
+                },
+              ]}
+            />
+          </div>
+          <div>
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+              Print
+            </span>
+            <SelectMenu
+              ariaLabel="Print option"
+              value={printed ? 'printed' : 'none'}
+              onChange={(v) => setPrinted(v !== 'none')}
+              options={[
+                {value: 'printed', label: 'Printed — your design'},
+                {value: 'none', label: 'No print — solid colour'},
+              ]}
+            />
+          </div>
         </div>
 
         {/* Size | Quantity — two columns */}
@@ -287,7 +379,7 @@ export function PriceEstimator() {
         <Link
           to={`/custom-print/${shape.toLowerCase()}?size=${encodeURIComponent(
             size.replace(/\s+/g, ''),
-          )}&qty=${qty}&start=1`}
+          )}&qty=${qty}&print=${printed ? 'single' : 'solid'}&start=1`}
           className="btn mt-5 w-full bg-orange-500 text-white transition-colors hover:bg-orange-600"
         >
           Start your order

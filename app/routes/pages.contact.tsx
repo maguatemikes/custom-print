@@ -199,7 +199,7 @@ function ContactHelp() {
   const links = [
     {label: 'Track my order', to: '/account/orders'},
     {label: 'Shipping & returns', to: '/pages/refund-returns'},
-    {label: 'Bulk & wholesale pricing', to: '/price-estimator'},
+    {label: 'Bulk & wholesale pricing', to: '/bandana-calculator'},
     {label: 'Start a design', to: '/collections/made-to-order-collections'},
   ];
   return (

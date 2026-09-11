@@ -4,6 +4,7 @@ import {Suspense, useEffect, useRef} from 'react';
 import type {RecommendedProductsQuery} from 'storefrontapi.generated';
 import {ProductItem} from '~/components/ProductItem';
 import {FeatureBadges} from '~/components/FeatureBadges';
+import {CurveCarousel} from '~/components/CurveCarousel';
 import SmokeyCursor from '~/components/lightswind/smokey-cursor';
 import {PriceEstimator} from '~/components/PriceEstimator';
 import {siteOrigin} from '~/lib/seo';
@@ -243,107 +244,22 @@ const GALLERY_IMAGES = [
   },
 ];
 
-/* Full-width infinite-loop carousel — EQUAL-size cards that auto-scroll forever
-   and wrap seamlessly (the list is tripled so there's always content to loop
-   into). Drag/swipe to move, hover to pause. No arrows. */
+/* Homepage hero gallery — the shared curve carousel filled with product shots. */
 function HeroGallery() {
-  const trackRef = useRef<HTMLDivElement>(null);
-  const st = useRef({
-    offset: 0,
-    setW: 0,
-    paused: false,
-    dragging: false,
-    startX: 0,
-    startOffset: 0,
-  });
-  const items = [...GALLERY_IMAGES, ...GALLERY_IMAGES, ...GALLERY_IMAGES];
-
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const measure = () => {
-      st.current.setW = track.scrollWidth / 3; // width of ONE set of images
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    let raf = 0;
-    const speed = 0.5; // px per frame
-    const tick = () => {
-      const s = st.current;
-      if (!s.paused && !s.dragging) s.offset += speed;
-      if (s.setW) {
-        if (s.offset >= s.setW) s.offset -= s.setW; // seamless wrap forward
-        else if (s.offset < 0) s.offset += s.setW; // and backward (drag)
-      }
-      track.style.transform = `translate3d(${-s.offset}px,0,0)`;
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', measure);
-    };
-  }, []);
-
-  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const s = st.current;
-    s.dragging = true;
-    s.startX = e.clientX;
-    s.startOffset = s.offset;
-  };
-  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const s = st.current;
-    if (!s.dragging) return;
-    s.offset = s.startOffset - (e.clientX - s.startX);
-  };
-  const endDrag = () => {
-    st.current.dragging = false;
-  };
-
   return (
-    <div className="relative mt-4 overflow-hidden md:mt-8">
-      <div
-        className="overflow-hidden"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerLeave={endDrag}
-        onMouseEnter={() => (st.current.paused = true)}
-        onMouseLeave={() => (st.current.paused = false)}
-      >
-        <div
-          ref={trackRef}
-          className="flex w-max cursor-grab select-none gap-5 py-5 will-change-transform active:cursor-grabbing"
-        >
-          {items.map((img, i) => (
-            // Static marquee, never reordered — index is a stable key.
-            // eslint-disable-next-line react/no-array-index-key
-            <div key={i} className="w-56 shrink-0 md:w-[300px]">
-              <div className="overflow-hidden rounded-[1.5rem] bg-mint shadow-lg ring-1 ring-black/10">
-                <img
-                  src={img.src}
-                  alt={img.alt}
-                  draggable={false}
-                  loading="lazy"
-                  className="pointer-events-none aspect-[3/4] w-full object-cover"
-                />
-              </div>
-            </div>
-          ))}
+    <CurveCarousel
+      cards={GALLERY_IMAGES.map((img) => (
+        <div className="overflow-hidden rounded-[1.5rem] bg-mint shadow-lg ring-1 ring-black/10">
+          <img
+            src={img.src}
+            alt={img.alt}
+            draggable={false}
+            loading="lazy"
+            className="pointer-events-none aspect-[3/4] w-full object-cover"
+          />
         </div>
-      </div>
-
-      {/* Oblong top & bottom — wide, page-coloured ovals crop the strip along an
-          arc, so the flat row reads as if it curves on a cylinder. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-0 h-[65%] w-[150%] -translate-x-1/2 -translate-y-[76%] rounded-[50%] bg-paper"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-0 left-1/2 h-[65%] w-[150%] -translate-x-1/2 translate-y-[76%] rounded-[50%] bg-paper"
-      />
-    </div>
+      ))}
+    />
   );
 }
 
