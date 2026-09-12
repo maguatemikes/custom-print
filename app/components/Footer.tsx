@@ -14,6 +14,8 @@ const COLUMNS = [
     links: [
       {label: 'New arrivals', to: '/collections/all'},
       {label: 'All collections', to: '/collections'},
+      {label: 'Bandana Quiz', to: '/bandana-quiz'},
+      {label: 'Bandana Calculator', to: '/bandana-calculator'},
       {label: 'Gift cards', to: '/'},
     ],
   },
@@ -35,7 +37,9 @@ export function Footer({
   publicStoreDomain,
 }: FooterProps) {
   return (
-    <footer className="bg-ink text-white">
+    <>
+      <NewsletterBand />
+      <footer className="bg-ink text-white">
       <div className="ui-container py-14">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-5">
           {/* Brand */}
@@ -129,7 +133,43 @@ export function Footer({
           </p>
         </div>
       </div>
-    </footer>
+      </footer>
+    </>
+  );
+}
+
+function NewsletterBand() {
+  return (
+    <section className="bg-brand-700">
+      <div className="ui-container flex flex-col items-center gap-5 py-16 text-center text-white md:py-24">
+        <span className="eyebrow text-white/75">Stay in the loop</span>
+        <h2 className="max-w-2xl text-3xl font-extrabold uppercase tracking-tight md:text-4xl">
+          First dibs on new designs &amp; drops.
+        </h2>
+        <p className="max-w-xl text-sm text-white/85 md:text-base">
+          Join the list for early access to new prints, seasonal designs, and
+          bulk &amp; wholesale offers.
+        </p>
+        <form
+          className="flex w-full max-w-xl flex-col gap-3 sm:flex-row"
+          onSubmit={(e) => e.preventDefault()}
+        >
+          <input
+            type="email"
+            required
+            placeholder="Enter your email"
+            aria-label="Email address"
+            className="!mt-0 !mb-0 w-full flex-1 rounded-pill !border-white/25 bg-white px-5 py-3 text-ink"
+          />
+          <button type="submit" className="btn btn-dark">
+            Join the list
+          </button>
+        </form>
+        <p className="text-xs text-white/80">
+          By signing up you agree to our Terms &amp; Privacy Policy.
+        </p>
+      </div>
+    </section>
   );
 }
 
