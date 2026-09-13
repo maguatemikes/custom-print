@@ -501,6 +501,7 @@ export default function CustomDesign() {
     const colorParam = searchParams.get('color');
     const printParam = searchParams.get('print');
     const layoutParam = searchParams.get('layout');
+    const intentParam = searchParams.get('intent');
     const startParam = searchParams.get('start');
     if (
       !sizeParam &&
@@ -508,6 +509,7 @@ export default function CustomDesign() {
       !colorParam &&
       !printParam &&
       !layoutParam &&
+      !intentParam &&
       !startParam
     )
       return;
@@ -528,6 +530,10 @@ export default function CustomDesign() {
     if (printParam && URL_TO_PRINT[printParam]) {
       setPrintSides(URL_TO_PRINT[printParam]);
     }
+    // Design intent handed off from the quiz (ready / help / layout).
+    if (intentParam && INTENTS.some((i) => i.value === intentParam)) {
+      setIntent(intentParam);
+    }
     // Design layout — validated against the patterns this shape actually offers
     // (square vs triangle sets differ), so a stale/foreign value is ignored.
     if (layoutParam && patternsFor(shape).some((p) => p.value === layoutParam)) {
@@ -547,6 +553,36 @@ export default function CustomDesign() {
         },
         {replace: true, preventScrollReset: true},
       );
+    }
+    // Artwork handed off from the quiz. The quiz captures it LOCALLY (base64, no
+    // CDN write) and stashes it in sessionStorage; we hydrate the front `logo`
+    // here so the Design step shows it and the Quote step's existing (single,
+    // deduped) upload hosts it — same path as a file uploaded in the wizard.
+    // Gated on the quiz signature (`intent`) and consumed once (cleared after) so
+    // it can never leak into an unrelated wizard visit. Purely additive: if the
+    // stash is absent or unreadable, the wizard behaves exactly as before.
+    if (intentParam) {
+      try {
+        const raw = sessionStorage.getItem('cb:quiz:logo');
+        if (raw) {
+          const saved = JSON.parse(raw) as {name?: string; preview?: string};
+          if (typeof saved?.preview === 'string' && saved.preview) {
+            const type =
+              /^data:([^;]+);/.exec(saved.preview)?.[1] ?? 'image/png';
+            setLogo({
+              name: saved.name || 'quiz-design.png',
+              type,
+              size: saved.preview.length,
+              preview: saved.preview,
+              dataUrl: saved.preview,
+            });
+            setLogoError(null);
+          }
+          sessionStorage.removeItem('cb:quiz:logo');
+        }
+      } catch {
+        /* storage blocked / bad JSON — ignore; the wizard works without it */
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

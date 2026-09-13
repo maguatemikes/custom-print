@@ -116,9 +116,17 @@ export function PriceEstimator({
   ];
 
   return (
-    <div className="grid items-center gap-12 lg:grid-cols-[1fr_1.05fr] lg:gap-16">
-      {/* Pitch */}
-      <div className="max-w-lg">
+    <div
+      className={
+        showHeading
+          ? 'mx-auto w-full max-w-xl'
+          : 'grid items-center gap-12 lg:grid-cols-[1fr_1.05fr] lg:gap-16'
+      }
+    >
+      {/* Pitch — homepage bulk band only; hidden on the standalone calculator
+          page, where the card is centred on its own. */}
+      {!showHeading ? (
+        <div className="max-w-lg">
         <span className="eyebrow text-brand-700">Bulk &amp; wholesale</span>
         <h2 className="mt-3 text-3xl font-extrabold uppercase tracking-tight text-ink md:text-4xl">
           Buy more, save more
@@ -147,7 +155,7 @@ export function PriceEstimator({
             </li>
           ))}
         </ul>
-        <div className="mt-6 rounded-xl border border-black/10 bg-black/[0.02] px-4 py-3">
+        <div className="mt-6 rounded-lg border border-black/10 bg-black/[0.02] px-4 py-3">
           <p className="text-sm leading-relaxed text-muted">
             <span className="font-semibold text-ink">
               Want a more complex layout?
@@ -157,9 +165,10 @@ export function PriceEstimator({
           </p>
         </div>
       </div>
+      ) : null}
 
       {/* Calculator card */}
-      <div className="w-full rounded-3xl border border-black/10 bg-white p-6 shadow-[0_24px_60px_-32px_rgba(16,20,16,0.35)] md:p-8">
+      <div className="w-full rounded-2xl border border-black/10 bg-white p-6 shadow-[0_24px_60px_-32px_rgba(16,20,16,0.35)] md:p-8">
         {showHeading ? (
           // Real page h1 + a dynamic h2 that names the exact product the shopper
           // is pricing (shape + size + the default 100% cotton material). Good
@@ -241,7 +250,7 @@ export function PriceEstimator({
             <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
               Quantity
             </span>
-            <div className="flex h-11 items-center gap-1 rounded-xl border border-black/15 px-1.5 focus-within:border-brand-500">
+            <div className="flex h-11 items-center gap-1 rounded-lg border border-black/15 px-1.5 focus-within:border-brand-500">
               <button
                 type="button"
                 onClick={() => setQty(qty - 1)}
@@ -300,7 +309,7 @@ export function PriceEstimator({
             <span>Volume</span>
             <span>Price / piece</span>
           </div>
-          <div className="max-h-56 divide-y divide-black/5 overflow-y-auto rounded-xl border border-black/10">
+          <div className="max-h-56 divide-y divide-black/5 overflow-y-auto rounded-lg border border-black/10">
             {sellable.map((t) => {
               const on = t.min === active.min;
               const d = discFor(t.each);
@@ -341,7 +350,7 @@ export function PriceEstimator({
         </div>
 
         {/* Price — full width */}
-        <div className="mt-5 rounded-2xl bg-mint px-5 py-4">
+        <div className="mt-5 rounded-xl bg-mint px-5 py-4">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="eyebrow text-brand-700">Your price</p>

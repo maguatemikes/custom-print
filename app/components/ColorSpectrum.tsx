@@ -136,9 +136,13 @@ function NumBox({
 export function ColorSpectrum({
   value,
   onChange,
+  compact = false,
 }: {
   value: string;
   onChange: (hex: string) => void;
+  // Shorter saturation/value field — for tight containers (e.g. the quiz card)
+  // where the default height would overflow. Wizard/PDP keep the full height.
+  compact?: boolean;
 }) {
   const init = rgbToHsv(hexToRgb(value) ?? [226, 59, 59]);
   const [h, setH] = useState(init[0]);
@@ -275,7 +279,9 @@ export function ColorSpectrum({
         <div
           ref={svRef}
           onPointerDown={startDrag(dragSV)}
-          className="relative h-56 min-w-0 flex-1 cursor-crosshair touch-none rounded-xl"
+          className={`relative min-w-0 flex-1 cursor-crosshair touch-none rounded-xl ${
+            compact ? 'h-40' : 'h-56'
+          }`}
           style={{
             background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent), hsl(${h}, 100%, 50%)`,
           }}
