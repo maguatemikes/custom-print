@@ -7,7 +7,7 @@ import {DesignHerePlaceholder} from '~/components/custom-print/DesignHerePlaceho
 import {TriangleDesignHere} from '~/components/custom-print/TriangleDesignHere';
 import {ColorSpectrum} from '~/components/ColorSpectrum';
 import {SelectMenu} from '~/components/SelectMenu';
-import {downscaleDataUrl} from '~/lib/customPrintProof';
+import {downscaleDataUrl, uploadImage, svgToPng} from '~/lib/customPrintProof';
 import {Breadcrumbs, breadcrumbJsonLd} from '~/components/Breadcrumbs';
 import {siteOrigin} from '~/lib/seo';
 import {
@@ -204,6 +204,169 @@ export const meta: Route.MetaFunction = ({matches}) => {
     {'script:ld+json': breadcrumbJsonLd(CRUMBS, origin)},
   ];
 };
+
+/**
+ * Quote → FunnelKit lead capture. The email step POSTs the shopper's answers here
+ * (server-side) and we forward a flat, editor-friendly payload to FunnelKit's
+ * Autonami incoming webhook — the same fields the quote email template merges.
+ * Runs on the Worker so the webhook URL/key never reaches the browser. Best-effort:
+ * a failure never blocks the shopper (the client fires it and moves on regardless).
+ */
+export async function action({request}: Route.ActionArgs) {
+  const form = await request.formData();
+  const g = (k: string) => String(form.get(k) ?? '').trim();
+
+  const email = g('email');
+  if (!EMAIL_RE.test(email)) return Response.json({ok: false});
+
+  const shape: Shape = g('shape') === 'Triangle' ? 'Triangle' : 'Square';
+  const size = g('size') || DEFAULT_SIZE[shape];
+  const qty = Math.max(MIN_QTY, Math.floor(Number(g('qty')) || MIN_QTY));
+  const print: Print = (['single', 'double', 'solid'] as const).includes(
+    g('print') as Print,
+  )
+    ? (g('print') as Print)
+    : 'single';
+  const intent = g('intent');
+  const layout = g('layout');
+  const useCase = g('useCase');
+  const useCaseOther = g('useCaseOther');
+  const designUrl = /^https?:\/\//.test(g('designUrl')) ? g('designUrl') : '';
+  const isSolid = print === 'solid';
+
+  const useCaseLabel =
+    useCase === 'other'
+      ? useCaseOther || 'Other'
+      : (USE_CASES.find((u) => u.value === useCase)?.label ?? 'Custom');
+  const printLabel =
+    PRINT_OPTIONS.find((p) => p.value === print)?.label ?? 'Single side print';
+  const intentLabel = DESIGN_INTENTS.find((i) => i.value === intent)?.label ?? '';
+  const layoutLabel =
+    patternsFor(shape).find((p) => p.value === layout)?.label ?? layout;
+
+  const cc = 'USD';
+  const unit = unitPriceFor(qty, size, shape);
+  const unitStr = money(unit, cc);
+  const totalStr = money(unit * qty, cc);
+  const nextT = nextTier(qty, size, shape);
+  const nextTierHint = nextT
+    ? `Order ${nextT.min.toLocaleString('en-US')}+ to drop to ${money(
+        nextT.each,
+        cc,
+      )}/pc`
+    : '';
+
+  const colorHex = g('color') || '#000000';
+  const colorName =
+    COLORS.find((c) => c.hex.toLowerCase() === colorHex.toLowerCase())?.name ??
+    'Custom colour';
+
+  const origin = new URL(request.url).origin;
+  const cleanSize = size.replace(/\s+/g, '');
+  const cleanColor = colorHex.replace('#', '');
+  const resumeLink = `${origin}/custom-print/${shape.toLowerCase()}?size=${encodeURIComponent(
+    cleanSize,
+  )}&color=${cleanColor}&qty=${qty}&print=${print}&layout=${layout}&intent=${intent}&start=1`;
+
+  const firstName = (email.split('@')[0] || '')
+    .replace(/[._+-]+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+
+  // Itemized rows that MIRROR the on-screen result card (same conditional logic):
+  // colour is hidden on the full-design "ready" path, layout only shows when a
+  // layout was chosen (not ready, not solid), design status is hidden for solid.
+  const esc = (s: string) =>
+    s.replace(/[&<>"]/g, (c) =>
+      c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
+    );
+  const rows: Array<[string, string]> = [];
+  rows.push(['For', esc(useCaseLabel)]);
+  rows.push(['Style', `${shape} bandana`]);
+  if (!(intent === 'ready' && !isSolid)) {
+    rows.push([
+      'Colour',
+      `<span style="display:inline-block;width:12px;height:12px;background:${colorHex};border:1px solid rgba(0,0,0,.15);border-radius:3px;vertical-align:middle;margin-right:6px;"></span>${esc(
+        colorName,
+      )}`,
+    ]);
+  }
+  rows.push(['Size', `${esc(size)} in`]);
+  rows.push(['Print', esc(printLabel)]);
+  if (!isSolid && intent !== 'ready') rows.push(['Layout', esc(layoutLabel)]);
+  rows.push(['Quantity', `${qty.toLocaleString('en-US')} pcs`]);
+  if (!isSolid && intentLabel) rows.push(['Design status', esc(intentLabel)]);
+
+  const quoteHtml =
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#0b1622;font-family:Arial,Helvetica,sans-serif;">' +
+    rows
+      .map(([k, v], i) => {
+        const bb =
+          i === rows.length - 1 ? '' : 'border-bottom:1px solid #eef1f5;';
+        return `<tr><td style="padding:9px 0;color:#5b6675;${bb}">${k}</td><td align="right" style="padding:9px 0;font-weight:700;color:#0b1622;${bb}">${v}</td></tr>`;
+      })
+      .join('') +
+    '</table>';
+
+  const payload = {
+    source: 'bandana_quiz',
+    email,
+    first_name: firstName,
+    use_case: useCaseLabel,
+    shape,
+    size,
+    background_color: colorName,
+    background_hex: colorHex,
+    quantity: String(qty),
+    print: printLabel,
+    design_status: isSolid ? 'Solid colour' : intentLabel,
+    layout: isSolid ? '—' : layoutLabel,
+    unit_price: unitStr,
+    estimated_total: totalStr,
+    next_tier: nextTierHint,
+    // Idea picks carry a real hosted image; uploads (base64) and solid have none
+    // yet, so fall back to the use-case lifestyle photo — never a broken image.
+    design_url:
+      designUrl ||
+      (USE_CASE_IMAGE as Record<string, string>)[useCase] ||
+      USE_CASE_IMAGE.team,
+    resume_link: resumeLink,
+    quote_html: quoteHtml,
+    quote_summary: `${shape} bandana · ${size} in · ${qty.toLocaleString(
+      'en-US',
+    )} pcs · ${unitStr}/pc · Estimated total ${totalStr}`,
+  };
+
+  // FunnelKit (Autonami) incoming webhook. Inline for now — server-only, so the
+  // key never ships to the browser. TODO: move to an env secret
+  // (FUNNELKIT_WEBHOOK_URL) once hosting/secrets are set up.
+  const WEBHOOK_URL =
+    'https://wholesaleforeveryone.com/wp-json/autonami/v1/webhook/?bwfan_autonami_webhook_id=26&bwfan_autonami_webhook_key=q0gm85X2JhhnsubSCLBHd09ZQUj2JsrA';
+
+  // The host's bot protection intermittently 403s server calls; a normal browser
+  // User-Agent gets through, and we retry once on a challenge so a lead is never
+  // dropped to a transient block.
+  const send = () =>
+    fetch(WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      body: JSON.stringify(payload),
+    });
+
+  try {
+    let res = await send();
+    if (res.status === 403) res = await send();
+    return Response.json({ok: res.ok});
+  } catch {
+    return Response.json({ok: false});
+  }
+}
 
 export default function BandanaQuizPage() {
   // 0 = intro · 1..7 = questions · 8 = result
@@ -580,9 +743,55 @@ export default function BandanaQuizPage() {
       return;
     }
     setEmailError('');
-    // TODO(email-wiring): capture `email` to Shopify (customer / newsletter
-    // opt-in) via a route action once the API path is confirmed. Collect-only
-    // for now — the value stays in state and drives the result copy below.
+    // Fire the quote to FunnelKit via our server action (POST to this route's
+    // action, which forwards to the webhook). Best-effort and non-blocking — the
+    // shopper always advances to the result even if the send fails.
+    //
+    // The email shows the DESIGN OUTPUT (the composed bandana), not the raw
+    // artwork: we rasterize the on-screen live preview SVG to a PNG and host it.
+    // Idea picks are already a hosted bandana image, so we use them directly.
+    void (async () => {
+      try {
+        let designUrl = '';
+        if (logoPreview && /^https?:\/\//.test(logoPreview)) {
+          designUrl = logoPreview; // idea pick — already a hosted design image
+        } else {
+          const svg = document.querySelector<SVGSVGElement>(
+            'svg[aria-label$="preview"]',
+          );
+          if (svg) {
+            try {
+              const png = await svgToPng(svg, 1000, shape === 'Triangle');
+              designUrl =
+                (await uploadImage(png, 'bandana-design.png')) || '';
+            } catch {
+              /* rasterize failed — fall back to hosting the raw artwork below */
+            }
+          }
+          if (!designUrl && logoPreview?.startsWith('data:')) {
+            designUrl =
+              (await uploadImage(logoPreview, logoName || 'quiz-design.png')) ||
+              '';
+          }
+        }
+        const body = new URLSearchParams({
+          email: email.trim(),
+          useCase,
+          useCaseOther,
+          shape,
+          color,
+          size,
+          qty: String(qty),
+          print,
+          intent,
+          layout,
+          designUrl,
+        });
+        await fetch('/bandana-quiz', {method: 'POST', body});
+      } catch {
+        /* ignore — the result still shows */
+      }
+    })();
     next();
   }
 
