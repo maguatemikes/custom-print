@@ -3,7 +3,10 @@ import {flushSync} from 'react-dom';
 import {Link, useSearchParams} from 'react-router';
 import type {Route} from './+types/bandana-quiz';
 import {BandanaPreview} from '~/components/custom-print/BandanaPreview';
+import {DesignHerePlaceholder} from '~/components/custom-print/DesignHerePlaceholder';
+import {TriangleDesignHere} from '~/components/custom-print/TriangleDesignHere';
 import {ColorSpectrum} from '~/components/ColorSpectrum';
+import {SelectMenu} from '~/components/SelectMenu';
 import {downscaleDataUrl} from '~/lib/customPrintProof';
 import {Breadcrumbs, breadcrumbJsonLd} from '~/components/Breadcrumbs';
 import {siteOrigin} from '~/lib/seo';
@@ -14,6 +17,10 @@ import {
   MIN_QTY,
   EMAIL_RE,
   patternsFor,
+  unitPriceFor,
+  nextTier,
+  tiersFor,
+  money,
 } from '~/lib/customPrintData';
 
 const CRUMBS = [{label: 'Home', href: '/'}, {label: 'Bandana Quiz'}];
@@ -101,14 +108,76 @@ const PRINT_OPTIONS: Array<{value: Print; label: string; note: string}> = [
 ];
 
 // Design status → wizard intent (values match the wizard's INTENTS: ready/layout/help).
+// Each choice drives a different downstream pathway (see questionSteps):
+//   ready  → confirm design → layout → email        (full design; NO colour step)
+//   layout → colour → layout → email                (has a logo to place)
+//   help   → idea center → colour → layout → email  (no design yet)
 const DESIGN_INTENTS: Array<{value: string; label: string; note?: string}> = [
-  {value: 'ready', label: "My artwork's ready to upload"},
-  {value: 'layout', label: 'I have a logo — help me place it'},
+  {value: 'ready', label: "My artwork's ready to upload", note: 'Upload a print-ready file'},
+  {value: 'layout', label: 'I have a logo — I need to place it', note: "We'll help you position it"},
   {
     value: 'help',
-    label: 'Design it for me',
-    note: 'Our design team · paid service',
+    label: "I don't have a design — walk me through it",
+    note: 'Browse ideas · our design team can help',
   },
+];
+
+// Placeholder "Idea Center" gallery — starter directions for shoppers with no
+// artwork ("walk me through it"). TODO: replace `src` with the curated / AI-
+// generated design library; these are stand-in thumbnails for now.
+// Real design proofs on the Shopify CDN, keyed by category. Add more categories
+// (Emblem, Sports, Floral…) here as their files are uploaded.
+const IDEA_FILES: Record<string, string[]> = {
+  Paisley: [
+    'I-Heart-Country-Natural-Proof.jpg',
+    '30003400-Dr-Pepper-Wine-Proof.jpg',
+    'Coke-Studio-Bandanna-ver-3-jpg.webp',
+    'Caretta-CP-Proof-Lime.jpg',
+    'Big-Head-Corps-Proof-2.jpg',
+    '3A-1.jpg',
+    'Amazon-Peccy-Eyes-up.jpg',
+    '20855639-Malibu-custom-paisley-bandanna-Copy.jpg',
+    'Florida-man-CP-proof-3-2.jpg',
+    'Caretta-CP-Proof-Lt-Blue.jpg',
+    'Tractor-Supply-bandanna-ver-1.jpg',
+    'Coke-Studio-Bandanna-ver-3.jpg',
+    'YL-Bandanna-ver-1-Hot-Pink-1.jpg',
+    'custom_paisley_-_ups_bandanna.jpg',
+  ],
+  Awareness: [
+    'hot-pink-1-1.jpg',
+    'b22nov-000230_pink_ribbon_survivor-1.jpg',
+    'Lyft-Bandanna-flat-300x300.webp',
+    '2356_Pink-Tea-2016-Scarf_PRINT.jpg',
+    '967535.WO-21329753-colored.jpg',
+    'b22nov-000231_pink_ribbons_black-1.jpg',
+    'purple-fundraiser-bandanna.jpg',
+    '23547069-1-Pink-300x300.webp',
+    '22471161-Miscreants-pink-300x300.webp',
+    'black.jpg',
+    'charities_-_habitat_housing.jpg',
+    'Walk-for-Life-blue.jpg',
+    'PO-P7180698C-Team-Green-Goes-Pink-proof.webp',
+    'walks__marathons_-_heart_walk.jpg',
+  ],
+};
+const IDEAS: Array<{value: string; label: string; category: string; src: string}> =
+  Object.entries(IDEA_FILES).flatMap(([category, files]) =>
+    files.map((f) => {
+      const base = f.replace(/\.[^.]+$/, '');
+      return {
+        value: base.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        label: base.replace(/[-_]+/g, ' ').trim(),
+        category,
+        src: `${CDN}/${f}`,
+      };
+    }),
+  );
+
+// Distinct categories for the Idea Center filter dropdown ("All" + each category).
+const IDEA_CATEGORIES = [
+  'All',
+  ...Array.from(new Set(IDEAS.map((i) => i.category))),
 ];
 
 // localStorage key for resuming an in-progress quiz (URL is the primary source).
@@ -152,6 +221,51 @@ export default function BandanaQuizPage() {
   const [qtyInput, setQtyInput] = useState(String(MIN_QTY));
   const [print, setPrint] = useState<Print>('single');
   const [intent, setIntent] = useState('ready'); // design status → wizard intent
+  const [idea, setIdea] = useState(''); // Idea Center pick (help pathway only)
+  const [ideaFilter, setIdeaFilter] = useState('All'); // Idea Center category filter
+  const ideaScrollRef = useRef<HTMLDivElement>(null); // Idea Center carousel scroller
+  const scrollIdeas = (dir: 1 | -1) =>
+    ideaScrollRef.current?.scrollBy({left: dir * 288, behavior: 'smooth'});
+  // Pointer/touch drag-to-scroll for the idea carousel (same as the tier table):
+  // press and drag to slide. `moved` suppresses the click-select after a drag.
+  const ideaDrag = useRef({down: false, moved: false, startX: 0, scrollLeft: 0});
+  const onIdeaDown = (e: React.PointerEvent) => {
+    const el = ideaScrollRef.current;
+    if (!el) return;
+    // Touch already pans natively (overflow-x); only drive mouse/pen drag here so
+    // pointer-capture never fights the native touch scroll. Clear the drag flag so
+    // a tap always selects (never blocked by a stale drag from earlier).
+    if (e.pointerType === 'touch') {
+      ideaDrag.current.moved = false;
+      return;
+    }
+    ideaDrag.current = {
+      down: true,
+      moved: false,
+      startX: e.clientX,
+      scrollLeft: el.scrollLeft,
+    };
+    // Free-scroll while dragging — mandatory snap makes the drag jerk toward each
+    // card; we restore the snap on release so it settles on the nearest one.
+    // NB: no setPointerCapture — capturing on the scroller retargets the click to
+    // it, so a card's onClick would never fire (selection would silently fail).
+    el.style.scrollSnapType = 'none';
+  };
+  const onIdeaMove = (e: React.PointerEvent) => {
+    const el = ideaScrollRef.current;
+    const d = ideaDrag.current;
+    if (!d.down || !el) return;
+    const dx = e.clientX - d.startX;
+    if (Math.abs(dx) > 4) d.moved = true;
+    if (d.moved) e.preventDefault();
+    el.scrollLeft = d.scrollLeft - dx;
+  };
+  const onIdeaUp = () => {
+    ideaDrag.current.down = false;
+    // Restore CSS snap so the carousel settles on the nearest card.
+    if (ideaScrollRef.current) ideaScrollRef.current.style.scrollSnapType = '';
+  };
+  const [artOk, setArtOk] = useState(false); // "Is this your artwork?" confirm
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   // Floating full-spectrum picker — the escape hatch when the shopper's colour
@@ -169,6 +283,10 @@ export default function BandanaQuizPage() {
     'idle',
   );
   const [logoError, setLogoError] = useState('');
+  // Set true when the shopper hits Continue on the design-status step without an
+  // upload (for the "ready"/"layout" choices) — turns the uploader border red
+  // instead of showing a text hint. Clears once a file is added.
+  const [logoAttempted, setLogoAttempted] = useState(false);
 
   const onLogoFile = (file: File) => {
     const okTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -194,6 +312,7 @@ export default function BandanaQuizPage() {
       );
       setLogoPreview(small);
       setLogoStatus('ready');
+      setLogoAttempted(false);
       // Local hand-off only — no CDN write. The wizard hosts it at Quote.
       try {
         sessionStorage.setItem(
@@ -224,7 +343,7 @@ export default function BandanaQuizPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    const keys = ['step', 'useCase', 'shape', 'color', 'size', 'qty', 'print', 'layout', 'intent'];
+    const keys = ['step', 'useCase', 'shape', 'color', 'size', 'qty', 'print', 'layout', 'intent', 'idea'];
     const hasUrl = keys.some((k) => searchParams.has(k));
     let saved: Record<string, string> | null = null;
     if (!hasUrl) {
@@ -279,13 +398,18 @@ export default function BandanaQuizPage() {
     const it = get('intent');
     if (it && DESIGN_INTENTS.some((x) => x.value === it)) setIntent(it);
 
+    const id2 = get('idea');
+    if (id2 && IDEAS.some((x) => x.value === id2)) setIdea(id2);
+
     const st = get('step');
     if (st != null) {
       const n = Math.floor(Number(st));
       // A shared URL may deep-link to any step (incl. the result). A localStorage
-      // resume only re-enters an in-progress question (1–7) — a finished/at-intro
-      // session starts fresh at the intro, with answers still pre-filled.
-      if (Number.isFinite(n) && (hasUrl ? n >= 0 && n <= 10 : n >= 1 && n <= 9)) {
+      // resume only re-enters an in-progress question (never the result step 10).
+      if (
+        Number.isFinite(n) &&
+        (hasUrl ? n >= 0 && n <= 12 : n >= 1 && n <= 12 && n !== 10)
+      ) {
         setStep(n);
       }
     }
@@ -310,6 +434,7 @@ export default function BandanaQuizPage() {
       print,
       layout,
       intent,
+      idea,
     };
     const t = setTimeout(() => {
       setSearchParams(
@@ -338,6 +463,7 @@ export default function BandanaQuizPage() {
     print,
     layout,
     intent,
+    idea,
     setSearchParams,
   ]);
 
@@ -396,14 +522,25 @@ export default function BandanaQuizPage() {
     });
   }
 
-  // Ordered question steps: 1 use-case · 2 shape · 3 colour · 4 size · 5 qty ·
-  // 6 print · 7 layout · 8 design-status · 9 email. The layout (7) and
-  // design-status (8) steps are skipped for a solid (no-print) bandana — there's
-  // no artwork to arrange or ask about.
-  const questionSteps =
-    print === 'solid'
-      ? [1, 2, 3, 4, 5, 6, 9]
-      : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  // Step IDs (fixed): 1 use-case · 2 shape · 3 colour · 4 size · 5 quantity ·
+  // 6 print · 7 design-status · 8 layout · 9 email · 11 idea-center · 10 result.
+  // The VISUAL ORDER is defined here (array-driven), and branches on print +
+  // design intent:
+  //   solid  → use→qty→shape→size→print→colour→email   (no design/layout)
+  //   ready  → …→print→design→layout→email             (full design, NO colour)
+  //   layout → …→print→design→colour→layout→email
+  //   help   → …→print→design→idea→colour→layout→email
+  const IDEA_STEP = 11;
+  const CONFIRM_STEP = 12;
+  const questionSteps = (() => {
+    const lead = [1, 5, 2, 4, 6]; // use-case → qty → shape → size → print
+    if (print === 'solid') return [...lead, 3, 9]; // + colour → email
+    const withDesign = [...lead, 7]; // + design-status (the branch point)
+    // Ready = a finished full design → confirm the artwork → email (no colour/layout).
+    if (intent === 'ready') return [...withDesign, CONFIRM_STEP, 9];
+    if (intent === 'layout') return [...withDesign, 3, 8, 9]; // colour → layout → email
+    return [...withDesign, IDEA_STEP, 3, 8, 9]; // help: idea → colour → layout → email
+  })();
   const RESULT_STEP = 10;
   const qTotal = questionSteps.length;
   const qPos = Math.max(1, questionSteps.indexOf(step) + 1);
@@ -425,6 +562,17 @@ export default function BandanaQuizPage() {
         return i <= 0 ? 0 : questionSteps[i - 1];
       }),
     );
+
+  // The final result (instant quote) is gated behind an email. If a shared link
+  // or restored progress lands on the result without a valid email, send the
+  // shopper to the email step (9) first so we always capture it. Runs only after
+  // hydration so the URL/localStorage restore has settled.
+  useEffect(() => {
+    if (!hydrated) return;
+    if (step === RESULT_STEP && !EMAIL_RE.test(email.trim())) {
+      setStep(9);
+    }
+  }, [hydrated, step, email]);
 
   function submitEmail() {
     if (!EMAIL_RE.test(email.trim())) {
@@ -457,7 +605,7 @@ export default function BandanaQuizPage() {
       </div>
 
       <section className="bg-paper">
-        <div className="ui-container flex justify-center pb-16 pt-6 md:pb-24 md:pt-8">
+        <div className="ui-container flex justify-center pb-16 pt-3 md:pb-24 md:pt-5">
           {/* Intro + result are centred and narrow; the question steps use the
               wide single-card configurator (question left, live preview right). */}
           {step === 0 || step === RESULT_STEP ? (
@@ -465,12 +613,12 @@ export default function BandanaQuizPage() {
               {step === 0 ? (
                 <div className="qz-step rounded-3xl border border-black/10 bg-white p-6 text-center shadow-[0_24px_60px_-32px_rgba(16,20,16,0.35)] md:p-8">
                   <span className="eyebrow text-brand-700">
-                    60-second quiz · 7 questions
+                    60-second quiz · a few quick questions
                   </span>
                   <h1 className="mt-3 text-3xl font-extrabold uppercase leading-[1.03] tracking-tight text-ink md:text-5xl">
-                    Find your perfect
+                    Find Your Perfect
                     <br />
-                    bandana
+                    Custom Bandana
                   </h1>
                   <p className="mx-auto mt-4 max-w-md leading-relaxed text-muted">
                     A few quick taps and we&apos;ll reveal the bandana we&apos;d
@@ -528,10 +676,15 @@ export default function BandanaQuizPage() {
                   useCase={useCase}
                   useCaseOther={useCaseOther}
                   intent={intent}
+                  idea={idea}
                   shape={shape}
                   color={color}
                   size={size}
                   qty={qty}
+                  onQty={(n) => {
+                    setQty(n);
+                    setQtyInput(String(n));
+                  }}
                   print={print}
                   printLabel={printLabel}
                   layout={layout}
@@ -581,16 +734,24 @@ export default function BandanaQuizPage() {
               <div className="overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_60px_-32px_rgba(16,20,16,0.35)]">
                 {/* Fixed height on desktop → the card never changes height
                     between questions (tallest step is the colour spectrum). */}
-                <div className="grid md:h-[600px] md:grid-cols-2">
+                <div
+                  className={`grid md:grid-cols-2 ${
+                    step === IDEA_STEP ? '' : 'md:h-[600px]'
+                  }`}
+                >
                   {/* Question (left on desktop, below preview on mobile) — a
                       square; content at top, Continue pinned bottom-left. */}
-                  <div className="order-2 flex min-h-0 flex-col overflow-y-auto p-6 md:order-1 md:p-8">
+                  <div
+                    className={`order-2 flex min-h-0 flex-col p-6 md:order-1 md:p-8 ${
+                      step === IDEA_STEP ? 'md:col-span-2' : 'overflow-y-auto'
+                    }`}
+                  >
                     <div key={step} className="qz-step flex flex-1 flex-col">
                       {/* 1 — Use case */}
                       {step === 1 ? (
                         <>
                           <QuestionHead
-                            step={1}
+                            step={qPos}
                             title="Who are these for?"
                             sub="Tap the closest fit — we'll tailor the rest."
                           />
@@ -688,7 +849,7 @@ export default function BandanaQuizPage() {
                       {step === 2 ? (
                         <>
                           <QuestionHead
-                            step={2}
+                            step={qPos}
                             title="Square or triangle?"
                             sub="The classic square, or a corner-fold triangle."
                           />
@@ -730,8 +891,8 @@ export default function BandanaQuizPage() {
                             return (
                               <>
                                 <QuestionHead
-                                  step={3}
-                                  title="What's your colour?"
+                                  step={qPos}
+                                  title="What's your background colour?"
                                   sub="Pick your fabric colour — the preview updates instantly."
                                 />
 
@@ -853,7 +1014,7 @@ export default function BandanaQuizPage() {
                       {step === 4 ? (
                         <>
                           <QuestionHead
-                            step={4}
+                            step={qPos}
                             title="What size?"
                             sub="Finished dimensions in inches."
                           />
@@ -885,7 +1046,7 @@ export default function BandanaQuizPage() {
                       {step === 5 ? (
                         <>
                           <QuestionHead
-                            step={5}
+                            step={qPos}
                             title="How many do you need?"
                             sub="Enter a rough quantity — you can fine-tune it later."
                           />
@@ -928,7 +1089,7 @@ export default function BandanaQuizPage() {
                       {step === 6 ? (
                         <>
                           <QuestionHead
-                            step={6}
+                            step={qPos}
                             title="How should it print?"
                             sub="You can fine-tune everything in the designer next."
                           />
@@ -952,7 +1113,7 @@ export default function BandanaQuizPage() {
                       {step === 8 ? (
                         <>
                           <QuestionHead
-                            step={8}
+                            step={qPos}
                             title="How should the design sit?"
                             sub="Pick a layout — fine-tune it in the designer next."
                           />
@@ -978,7 +1139,7 @@ export default function BandanaQuizPage() {
                       {step === 7 ? (
                         <>
                           <QuestionHead
-                            step={7}
+                            step={qPos}
                             title="Where are you with your design?"
                           />
                           <div className="grid grid-cols-1 gap-3">
@@ -988,11 +1149,248 @@ export default function BandanaQuizPage() {
                                 selected={intent === it.value}
                                 title={it.label}
                                 note={it.note}
-                                onClick={() => runVT(() => setIntent(it.value))}
+                                onClick={() =>
+                                  runVT(() => {
+                                    setIntent(it.value);
+                                    // "No design yet" → drop any prior upload so it
+                                    // can't carry into the preview / quote / wizard.
+                                    if (it.value === 'help') onLogoRemove();
+                                  })
+                                }
                                 row
                               />
                             ))}
                           </div>
+                          <StepFooter
+                            onBack={back}
+                            // Both "ready to upload" AND "I have a logo — place it"
+                            // require the file first (they both say they have art);
+                            // only "walk me through it" (help) needs no upload. On a
+                            // Continue without art, flag it so the uploader border
+                            // turns red (no text hint) instead of advancing.
+                            onContinue={() => {
+                              if (intent !== 'help' && !logoPreview) {
+                                setLogoAttempted(true);
+                                return;
+                              }
+                              next();
+                            }}
+                          />
+                        </>
+                      ) : null}
+
+                      {/* 12 — Confirm artwork (ready pathway: full-size review) */}
+                      {step === CONFIRM_STEP ? (
+                        <>
+                          <QuestionHead
+                            step={qPos}
+                            title="Is this your artwork?"
+                            sub="Check it looks right — you'll fine-tune size & placement in the designer next."
+                          />
+                          {/* Yes/No as radio buttons; No returns to upload. */}
+                          <div className="flex flex-col gap-3">
+                            <label
+                              className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition ${
+                                artOk
+                                  ? 'border-brand-500 bg-brand-50'
+                                  : 'border-black/12 hover:border-black/25'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="artConfirm"
+                                checked={artOk}
+                                onChange={() => setArtOk(true)}
+                                className="h-4 w-4 shrink-0 accent-brand-500"
+                              />
+                              <span className="text-sm font-bold text-ink">
+                                Yes, that&apos;s my artwork
+                              </span>
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-black/12 px-4 py-3 transition hover:border-black/25">
+                              <input
+                                type="radio"
+                                name="artConfirm"
+                                checked={false}
+                                onChange={() => {
+                                  setArtOk(false);
+                                  back();
+                                }}
+                                className="h-4 w-4 shrink-0 accent-brand-500"
+                              />
+                              <span className="text-sm font-bold text-ink">
+                                No — replace it
+                              </span>
+                            </label>
+                          </div>
+                          <StepFooter
+                            onBack={back}
+                            onContinue={next}
+                            disabled={!artOk}
+                            hint={
+                              !artOk ? 'Confirm your artwork to continue' : undefined
+                            }
+                          />
+                        </>
+                      ) : null}
+
+                      {/* 11 — Idea Center (help pathway: browse starter ideas) */}
+                      {step === IDEA_STEP ? (
+                        <>
+                          <div className="flex items-start justify-between gap-4">
+                            <QuestionHead
+                              step={qPos}
+                              title="Pick a design idea"
+                              sub="Swipe through design directions and pick one to start."
+                            />
+                            {/* Category filter — custom dropdown (not native). */}
+                            <div className="flex shrink-0 items-center gap-2 pt-1">
+                              <span className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                                Filter
+                              </span>
+                              <div className="w-44">
+                                <SelectMenu
+                                  value={ideaFilter}
+                                  onChange={setIdeaFilter}
+                                  options={IDEA_CATEGORIES.map((c) => ({
+                                    value: c,
+                                    label: c,
+                                  }))}
+                                  ariaLabel="Filter design ideas by category"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          {/* Divider line under the title */}
+                          <div className="mb-4 border-t border-black/10" />
+                          {/* Full-width carousel — native touch/trackpad swipe on
+                              the scroller, plus prev/next buttons. Sharp images. */}
+                          <div className="relative">
+                            <div
+                              ref={ideaScrollRef}
+                              onPointerDown={onIdeaDown}
+                              onPointerMove={onIdeaMove}
+                              onPointerUp={onIdeaUp}
+                              onPointerCancel={onIdeaUp}
+                              onDragStart={(e) => e.preventDefault()}
+                              style={{touchAction: 'pan-x'}}
+                              className="no-scrollbar flex cursor-grab select-none snap-x snap-mandatory gap-4 overflow-x-auto pb-2 active:cursor-grabbing"
+                            >
+                            {IDEAS.filter(
+                              (it) =>
+                                ideaFilter === 'All' ||
+                                it.category === ideaFilter,
+                            ).map((it) => {
+                              const on = idea === it.value;
+                              return (
+                                <button
+                                  key={it.value}
+                                  type="button"
+                                  onClick={() => {
+                                    // Ignore the click that ends a drag-scroll.
+                                    if (ideaDrag.current.moved) return;
+                                    runVT(() => {
+                                      setIdea(it.value);
+                                      // Carry the picked design into the layout
+                                      // step (Q9), the quote, and the wizard.
+                                      setLogoPreview(it.src);
+                                      setLogoName(it.label);
+                                      setLogoStatus('ready');
+                                      try {
+                                        sessionStorage.setItem(
+                                          'cb:quiz:logo',
+                                          JSON.stringify({
+                                            name: it.label,
+                                            preview: it.src,
+                                          }),
+                                        );
+                                      } catch {
+                                        /* storage blocked — preview still works */
+                                      }
+                                    });
+                                  }}
+                                  aria-pressed={on}
+                                  aria-label={it.label}
+                                  className={`group relative aspect-square w-64 shrink-0 snap-start overflow-hidden bg-mint outline-none transition duration-150 focus:outline-none ${
+                                    on
+                                      ? 'ring-2 ring-inset ring-brand-500'
+                                      : 'hover:ring-1 hover:ring-inset hover:ring-black/15'
+                                  }`}
+                                >
+                                  <img
+                                    src={it.src}
+                                    alt={it.label}
+                                    loading="lazy"
+                                    draggable={false}
+                                    referrerPolicy="no-referrer"
+                                    className="pointer-events-none h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                                  />
+                                  {/* Selected: a small, quiet check in the corner. */}
+                                  {on ? (
+                                    <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-brand-500 text-white shadow-sm">
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-3.5 w-3.5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="3"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        aria-hidden="true"
+                                      >
+                                        <path d="M20 6 9 17l-5-5" />
+                                      </svg>
+                                    </span>
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                            </div>
+                            {/* Prev / next carousel controls */}
+                            <button
+                              type="button"
+                              aria-label="Previous ideas"
+                              onClick={() => scrollIdeas(-1)}
+                              className="absolute left-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-black/10 bg-white/95 text-ink shadow-md transition hover:bg-white"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="m15 18-6-6 6-6" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              aria-label="More ideas"
+                              onClick={() => scrollIdeas(1)}
+                              className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-black/10 bg-white/95 text-ink shadow-md transition hover:bg-white"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="m9 18 6-6-6-6" />
+                              </svg>
+                            </button>
+                          </div>
+                          <p className="mt-3 text-xs text-muted">
+                            Just a starting direction — you&apos;ll refine it in
+                            the designer. (Placeholder gallery — real design ideas
+                            coming soon.)
+                          </p>
                           <StepFooter onBack={back} onContinue={next} />
                         </>
                       ) : null}
@@ -1001,7 +1399,7 @@ export default function BandanaQuizPage() {
                       {step === 9 ? (
                         <>
                           <QuestionHead
-                            step={9}
+                            step={qPos}
                             title="Where should we send it?"
                             sub="We'll send your recommendation and a design link straight to you."
                           />
@@ -1056,19 +1454,39 @@ export default function BandanaQuizPage() {
                     </div>
                   </div>
 
-                  {/* Live preview (right on desktop, top on mobile) — a 1:1
-                      square, centred, with the indicators floating inside it.
-                      Same background as the question side, no divider — clean. */}
-                  <div className="order-1 flex items-start justify-center p-6 md:order-2 md:p-8">
-                    {step === 7 ? (
+                  {/* Live preview (right on desktop, top on mobile). Hidden on the
+                      Idea Center step, which spans the full width instead. */}
+                  {step !== IDEA_STEP ? (
+                  <div
+                    className={`order-1 flex justify-center md:order-2 ${
+                      step === CONFIRM_STEP
+                        ? 'items-stretch'
+                        : 'items-start p-6 md:p-8'
+                    }`}
+                  >
+                    {step === 7 && intent !== 'help' ? (
+                      // Design-status upload — only for "ready"/"layout" (they have
+                      // a file). "help" has no design yet → show the preview.
                       <QuizUpload
                         preview={logoPreview}
                         name={logoName}
                         status={logoStatus}
                         error={logoError}
+                        invalid={logoAttempted && !logoPreview}
                         onFile={onLogoFile}
                         onRemove={onLogoRemove}
                       />
+                    ) : step === CONFIRM_STEP ? (
+                      // Artwork review — the WHOLE design, centred (no crop).
+                      <div className="flex h-full min-h-[380px] w-full items-center justify-center bg-mint p-6">
+                        {logoPreview ? (
+                          <img
+                            src={logoPreview}
+                            alt={logoName || 'Your artwork'}
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        ) : null}
+                      </div>
                     ) : (
                       <PreviewPanel
                         shape={shape}
@@ -1077,15 +1495,24 @@ export default function BandanaQuizPage() {
                         print={print}
                         printLabel={printLabel}
                         sample={USE_CASE_IMAGE[useCase]}
-                        showSample={step !== 2 && step !== 3}
+                        showSample={
+                          step !== 2 && step !== 3 && step !== IDEA_STEP
+                        }
                         sizeVisual={step === 4}
                         printVisual={step === 6}
-                        layoutVisual={step === 8}
+                        // Show the composed design (bandana + layout + artwork) on
+                        // the layout step AND the final email step, so every path
+                        // ends on a preview of what they'll get. Solid has no design
+                        // → it keeps the plain blank preview.
+                        layoutVisual={
+                          step === 8 || (step === 9 && print !== 'solid')
+                        }
                         layout={layout}
                         logoPreview={logoPreview}
                       />
                     )}
                   </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1135,6 +1562,14 @@ function PreviewPanel({
   logoPreview: string | null;
 }) {
   const pattern = patternsFor(shape).find((p) => p.value === layout);
+  // Which face the print-step preview is showing. Double-sided lets the shopper
+  // toggle Front/Back right inside the image (the back is the design mirrored),
+  // mirroring the wizard's in-preview flip control. Reset to front when the
+  // print option changes so single-side never lands on a hidden "back".
+  const [face, setFace] = useState<'front' | 'back'>('front');
+  useEffect(() => {
+    setFace('front');
+  }, [print]);
   return (
     <div className="relative aspect-square w-full">
       {sizeVisual ? (
@@ -1148,12 +1583,53 @@ function PreviewPanel({
         </div>
       ) : printVisual ? (
         <div className="absolute inset-0 flex items-center justify-center">
-          <PrintGlyph
-            shape={shape}
-            color={color}
-            print={print}
-            className="h-full w-full"
-          />
+          {print !== 'solid' ? (
+            // Single / double print → the "your design here" mock (square or
+            // triangle template). Double-sided adds an in-image Front/Back toggle
+            // (like the wizard); the back is the same design mirrored.
+            <div className="relative aspect-square h-full">
+              {print === 'double' ? (
+                <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 gap-0.5 rounded-full bg-white/90 p-0.5 shadow">
+                  {(['front', 'back'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      aria-pressed={face === s}
+                      onClick={() => setFace(s)}
+                      className={`rounded-full px-3 py-1 text-[11px] font-semibold capitalize transition-colors ${
+                        face === s ? 'bg-ink text-white' : 'text-ink/70'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {shape === 'Triangle' ? (
+                <TriangleDesignHere
+                  color={color}
+                  className={`h-full w-full ${
+                    print === 'double' && face === 'back' ? '-scale-x-100' : ''
+                  }`}
+                />
+              ) : (
+                <DesignHerePlaceholder
+                  color={color}
+                  size={size}
+                  className={`h-full w-full ${
+                    print === 'double' && face === 'back' ? '-scale-x-100' : ''
+                  }`}
+                />
+              )}
+            </div>
+          ) : (
+            <PrintGlyph
+              shape={shape}
+              color={color}
+              print={print}
+              className="h-full w-full"
+            />
+          )}
         </div>
       ) : layoutVisual ? (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -1209,10 +1685,12 @@ function ResultCard({
   useCase,
   useCaseOther,
   intent,
+  idea,
   shape,
   color,
   size,
   qty,
+  onQty,
   print,
   printLabel,
   layout,
@@ -1226,10 +1704,12 @@ function ResultCard({
   useCase: string;
   useCaseOther: string;
   intent: string;
+  idea: string;
   shape: Shape;
   color: string;
   size: string;
   qty: number;
+  onQty: (n: number) => void;
   print: Print;
   printLabel: string;
   layout: string;
@@ -1250,25 +1730,49 @@ function ResultCard({
   const intentLabel =
     DESIGN_INTENTS.find((i) => i.value === intent)?.label ?? '';
 
+  // Estimated pricing — same engine/tiers as the calculator (USD).
+  const cc = 'USD';
+  const unit = unitPriceFor(qty, size, shape);
+  const total = unit * qty;
+  const next = nextTier(qty, size, shape);
+
+  // Volume ladder (same source as the calculator/estimator) so a shopper can
+  // change their mind on quantity right here — tapping a tier updates the quote.
+  const tiers = tiersFor(size, shape);
+  const base = tiers[0]?.each ?? 0; // 1–11 compare-at (not sold; MOQ is 12)
+  const sellable = tiers.filter((t) => t.min >= MIN_QTY); // 12+ order tiers
+  const activeTier =
+    tiers.find((t) => qty >= t.min && (t.max === null || qty <= t.max)) ??
+    tiers[tiers.length - 1];
+  const discFor = (each: number) =>
+    base > 0 ? Math.round(((base - each) / base) * 100) : 0;
+
   // Itemized spec — the quote's line items (every answer from the quiz).
   const rows = [
     {label: 'For', value: useCaseLabel},
     {label: 'Style', value: `${shape} bandana`},
-    {
-      label: 'Colour',
-      value: (
-        <span className="inline-flex items-center gap-2">
-          <span
-            className="h-3.5 w-3.5 rounded-full border border-black/10"
-            style={{backgroundColor: color}}
-          />
-          {colorName}
-        </span>
-      ),
-    },
+    // Colour is skipped on the full-design ("ready") pathway — the artwork
+    // covers the whole bandana, so no fabric colour is chosen.
+    ...(intent === 'ready' && print !== 'solid'
+      ? []
+      : [
+          {
+            label: 'Colour',
+            value: (
+              <span className="inline-flex items-center gap-2">
+                <span
+                  className="h-3.5 w-3.5 rounded-full border border-black/10"
+                  style={{backgroundColor: color}}
+                />
+                {colorName}
+              </span>
+            ),
+          },
+        ]),
     {label: 'Size', value: `${size} in`},
     {label: 'Print', value: printLabel},
-    ...(print !== 'solid'
+    // Layout is only chosen on the layout/help pathways (not ready, not solid).
+    ...(print !== 'solid' && intent !== 'ready'
       ? [
           {
             label: 'Layout',
@@ -1282,6 +1786,15 @@ function ResultCard({
     // Design status (artwork ready / needs help) — only when there's a print.
     ...(print !== 'solid' && intentLabel
       ? [{label: 'Design status', value: intentLabel}]
+      : []),
+    // Idea Center pick (help pathway, when they haven't uploaded their own).
+    ...(idea && !logoPreview
+      ? [
+          {
+            label: 'Design idea',
+            value: IDEAS.find((i) => i.value === idea)?.label ?? idea,
+          },
+        ]
       : []),
     ...(logoPreview
       ? [
@@ -1345,14 +1858,90 @@ function ResultCard({
           ))}
         </dl>
 
-        {/* Reassurances — plain text (no icons, no pills), so they don't read as
-            buttons. Pricing intentionally lives in the calculator. */}
-        <p className="mt-5 text-center text-xs font-medium text-muted">
-          Free digital proof · No setup fees · Made to order
+        {/* Change your mind on quantity? Tap a tier — buy more, save more. Same
+            volume ladder as the calculator; updates the quote live. Shown ABOVE
+            the total so the shopper picks a tier, then sees the resulting price. */}
+        <div className="mt-5" role="radiogroup" aria-label="Change quantity tier">
+          <div className="flex items-center justify-between px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
+            <span>Volume</span>
+            <span>Price / piece</span>
+          </div>
+          <div className="max-h-56 divide-y divide-black/5 overflow-y-auto rounded-xl border border-black/10">
+            {sellable.map((t) => {
+              const on = t === activeTier;
+              const d = discFor(t.each);
+              return (
+                <button
+                  key={t.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => onQty(Math.max(MIN_QTY, t.min))}
+                  className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition ${
+                    on
+                      ? 'bg-mint font-bold text-ink ring-1 ring-inset ring-brand-500'
+                      : 'bg-white text-ink hover:bg-black/[0.03]'
+                  }`}
+                >
+                  <span className="tabular-nums">{t.label}</span>
+                  <span className="flex items-center gap-2.5">
+                    {d > 0 ? (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                          on ? 'bg-red-600 text-white' : 'bg-red-600/10 text-red-600'
+                        }`}
+                      >
+                        −{d}%
+                      </span>
+                    ) : null}
+                    <span className="w-16 text-right font-bold tabular-nums">
+                      {money(t.each, cc)}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Estimated pricing — reflects the selected tier above. */}
+        <div className="mt-5 rounded-2xl bg-mint/60 p-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted">Unit price</span>
+            <span className="font-semibold tabular-nums text-ink">
+              {money(unit, cc)}
+              <span className="font-normal text-muted">/pc</span>
+            </span>
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-sm">
+            <span className="text-muted">Quantity</span>
+            <span className="font-semibold tabular-nums text-ink">
+              × {qty.toLocaleString('en-US')}
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-black/10 pt-3">
+            <span className="text-sm font-bold uppercase tracking-wide text-ink">
+              Estimated total
+            </span>
+            <span className="text-2xl font-extrabold tabular-nums text-ink">
+              {money(total, cc)}
+            </span>
+          </div>
+          {next ? (
+            <p className="mt-1 text-right text-xs text-muted">
+              Order {next.min.toLocaleString('en-US')}+ to drop to{' '}
+              {money(next.each, cc)}/pc
+            </p>
+          ) : null}
+        </div>
+
+        <p className="mt-3 text-center text-[11px] leading-relaxed text-muted">
+          Estimate only · no setup or artwork fees · final price confirmed at
+          checkout.
         </p>
 
-        <Link to={designHref} className="btn btn-dark mt-5 w-full text-base">
-          Design yours now
+        <Link to={designHref} className="btn btn-dark mt-4 w-full text-base">
+          Refine your layout and complete order
         </Link>
 
         {email ? (
@@ -1610,6 +2199,7 @@ function QuizUpload({
   name,
   status,
   error,
+  invalid = false,
   onFile,
   onRemove,
 }: {
@@ -1617,6 +2207,8 @@ function QuizUpload({
   name: string;
   status: 'idle' | 'ready' | 'error';
   error: string;
+  // Failed a Continue without an upload → paint the dashed border red.
+  invalid?: boolean;
   onFile: (file: File) => void;
   onRemove: () => void;
 }) {
@@ -1713,7 +2305,9 @@ function QuizUpload({
             className={`flex aspect-square w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-6 text-center transition ${
               drag
                 ? 'border-brand-500 bg-mint'
-                : 'border-black/15 hover:border-brand-500 hover:bg-mint/40'
+                : invalid
+                  ? 'border-red-500 hover:border-red-500 hover:bg-red-50/40'
+                  : 'border-black/15 hover:border-brand-500 hover:bg-mint/40'
             }`}
           >
             <span className="grid h-12 w-12 place-items-center rounded-full bg-mint text-brand-700">
@@ -1794,7 +2388,12 @@ function PrintGlyph({
   const T = cy - half;
   const B = cy + half;
   const isDouble = print === 'double';
+  const isSolid = print === 'solid';
   const hasPrint = print !== 'solid';
+  // Solid gets just a TINY turned-up corner; double-sided folds a bigger ear to
+  // reveal the printed back. Single side stays flat (no fold).
+  const hasFold = isDouble || isSolid;
+  const foldFrac = isSolid ? 0.24 : 0.44;
 
   type Pt = {x: number; y: number};
   const toStr = (pts: Pt[]) =>
@@ -1824,8 +2423,8 @@ function PrintGlyph({
   };
   const n = poly.length;
   const C = poly[foldIdx];
-  const P1 = along(C, poly[(foldIdx - 1 + n) % n], s * 0.44);
-  const P2 = along(C, poly[(foldIdx + 1) % n], s * 0.44);
+  const P1 = along(C, poly[(foldIdx - 1 + n) % n], s * foldFrac);
+  const P2 = along(C, poly[(foldIdx + 1) % n], s * foldFrac);
   const frontPts = [...poly.slice(0, foldIdx), P1, P2, ...poly.slice(foldIdx + 1)];
   // Reflect the corner across the crease so the flap folds INWARD — a turned-up
   // puppy ear. Its lighter tone reads as the fabric's reverse (not a shadow).
@@ -1838,13 +2437,18 @@ function PrintGlyph({
   const Cr = reflect(C, P1, P2);
   // The revealed reverse face is shown in RED so it clearly reads as the back.
   const back = '#d50032';
+  // Solid fold: the turned-up corner shows the fabric's reverse — the SAME base
+  // colour lifted toward white ("a little snow") so it reads as a fold, not print.
+  const mix = (c: number, t: number) => Math.round(c + (255 - c) * t);
+  const snow = `rgb(${mix(rr, 0.22)}, ${mix(gg, 0.22)}, ${mix(bb, 0.22)})`;
 
-  // The front face, filled with the fabric colour.
+  // The front face, filled with the fabric colour. A folded corner (solid or
+  // double) cuts the corner off; single side stays a full square.
   const frontShape = (fill: string) =>
-    !isDouble && !isTri ? (
+    !hasFold && !isTri ? (
       <rect x={L} y={T} width={s} height={s} fill={fill} />
     ) : (
-      <polygon points={toStr(isDouble ? frontPts : poly)} fill={fill} />
+      <polygon points={toStr(hasFold ? frontPts : poly)} fill={fill} />
     );
 
   // A faint dotted SQUARE grid across the fabric's bounding box (the print).
@@ -1909,6 +2513,15 @@ function PrintGlyph({
             {gridLines()}
           </g>
           <line x1={P1.x} y1={P1.y} x2={P2.x} y2={P2.y} stroke={CREASE} strokeWidth="0.9" />
+        </g>
+      ) : null}
+
+      {/* solid: a tiny turned-up puppy ear in a slightly lighter ("snow") shade
+          of the same fabric colour — dimension without any print. */}
+      {isSolid ? (
+        <g>
+          <polygon points={toStr([P1, Cr, P2])} fill={snow} />
+          <line x1={P1.x} y1={P1.y} x2={P2.x} y2={P2.y} stroke={CREASE} strokeWidth="0.7" />
         </g>
       ) : null}
     </svg>

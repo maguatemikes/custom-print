@@ -54,6 +54,13 @@ export async function uploadImage(
   dataUrl: string,
   filename: string,
 ): Promise<string | null> {
+  // Already-hosted artwork (a quiz "design idea" pick carries the gallery image's
+  // own Shopify CDN URL, not base64) needs no re-upload — return it as-is so the
+  // order carries the real URL. Restricted to our own CDN host so an arbitrary
+  // URL can never be smuggled onto an order in place of the base64 upload path.
+  if (/^https:\/\/cdn\.shopify\.com\//.test(dataUrl)) {
+    return dataUrl;
+  }
   try {
     const res = await fetch('/api/upload', {
       method: 'POST',
