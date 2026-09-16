@@ -232,6 +232,7 @@ export async function action({request}: Route.ActionArgs) {
   const useCase = g('useCase');
   const useCaseOther = g('useCaseOther');
   const designUrl = /^https?:\/\//.test(g('designUrl')) ? g('designUrl') : '';
+  const artworkUrl = /^https?:\/\//.test(g('artworkUrl')) ? g('artworkUrl') : '';
   const isSolid = print === 'solid';
 
   const useCaseLabel =
@@ -241,8 +242,12 @@ export async function action({request}: Route.ActionArgs) {
   const printLabel =
     PRINT_OPTIONS.find((p) => p.value === print)?.label ?? 'Single side print';
   const intentLabel = DESIGN_INTENTS.find((i) => i.value === intent)?.label ?? '';
+  // Ready = a finished full design → always "Full print", regardless of any
+  // layout value carried over from a path switch.
   const layoutLabel =
-    patternsFor(shape).find((p) => p.value === layout)?.label ?? layout;
+    intent === 'ready'
+      ? (patternsFor(shape).find((p) => p.full)?.label ?? 'Full print')
+      : (patternsFor(shape).find((p) => p.value === layout)?.label ?? layout);
 
   const cc = 'USD';
   const unit = unitPriceFor(qty, size, shape);
@@ -327,6 +332,13 @@ export async function action({request}: Route.ActionArgs) {
     // Idea picks carry a real hosted image; uploads (base64) and solid have none
     // yet, so fall back to the use-case lifestyle photo — never a broken image.
     design_url:
+      designUrl ||
+      (USE_CASE_IMAGE as Record<string, string>)[useCase] ||
+      USE_CASE_IMAGE.team,
+    // The user's ORIGINAL artwork (falls back to the design output, then a
+    // lifestyle photo, so the email never shows a broken image).
+    artwork_url:
+      artworkUrl ||
       designUrl ||
       (USE_CASE_IMAGE as Record<string, string>)[useCase] ||
       USE_CASE_IMAGE.team,
@@ -577,38 +589,77 @@ export default function BandanaQuizPage() {
       }
     }
 
+    // Artwork survives a refresh / resume: the upload is stashed in sessionStorage
+    // (the same key the wizard reads). Restore it so a returning shopper's design
+    // is still present at Reveal. Read-only here — the wizard consumes/clears it
+    // when the shopper continues to the designer.
+    try {
+      const rawLogo = sessionStorage.getItem('cb:quiz:logo');
+      if (rawLogo) {
+        const savedLogo = JSON.parse(rawLogo) as {
+          name?: string;
+          preview?: string;
+        };
+        if (typeof savedLogo?.preview === 'string' && savedLogo.preview) {
+          setLogoPreview(savedLogo.preview);
+          setLogoName(savedLogo.name || '');
+          setLogoStatus('ready');
+        }
+      }
+    } catch {
+      /* storage blocked / bad JSON — the quiz still works without the artwork */
+    }
+
     setHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- Persist: mirror answers to the URL (shareable/deep-linkable) and
   // localStorage (resume), debounced. Gated on `hydrated` so it can't clobber
-  // the URL before the read above runs. ---
+  // the URL before the read above runs. The intro (step 0) stays a CLEAN URL —
+  // params only appear once the shopper starts, then fill in additively; blank
+  // values are never written, and a Back to the intro self-cleans the URL. ---
   useEffect(() => {
     if (!hydrated) return;
-    const snapshot = {
-      step: String(step),
-      useCase,
-      useOther: useCaseOther,
-      shape: shape.toLowerCase(),
-      color: color.replace('#', ''),
-      size: size.replace(/\s+/g, ''),
-      qty: String(qty),
-      print,
-      layout,
-      intent,
-      idea,
-    };
+    const QUIZ_KEYS = [
+      'step', 'useCase', 'useOther', 'shape', 'color', 'size', 'qty', 'print',
+      'layout', 'intent', 'idea',
+    ];
+    // At step 0 write nothing (clean intro URL). From step 1 on, write only the
+    // params the shopper has actually set — blanks (empty idea / useOther) are
+    // omitted so the URL never carries empty junk.
+    const snapshot: Record<string, string> =
+      step === 0
+        ? {}
+        : {
+            step: String(step),
+            useCase,
+            shape: shape.toLowerCase(),
+            color: color.replace('#', ''),
+            size: size.replace(/\s+/g, ''),
+            qty: String(qty),
+            print,
+            layout,
+            intent,
+          };
+    if (step !== 0 && useCaseOther) snapshot.useOther = useCaseOther;
+    if (step !== 0 && idea) snapshot.idea = idea;
     const t = setTimeout(() => {
       setSearchParams(
         (prev) => {
+          // Drop every quiz key first, then re-add the ones in play — so stale or
+          // now-blank params fall off and the intro (no keys) is fully clean.
+          QUIZ_KEYS.forEach((k) => prev.delete(k));
           Object.entries(snapshot).forEach(([k, v]) => prev.set(k, v));
           return prev;
         },
         {replace: true, preventScrollReset: true},
       );
       try {
-        localStorage.setItem(QUIZ_STORAGE_KEY, JSON.stringify(snapshot));
+        // Don't overwrite saved progress from the intro (nothing to resume there).
+        if (step !== 0) {
+          localStorage.setItem(QUIZ_STORAGE_KEY, JSON.stringify(snapshot));
+        }
       } catch {
         /* storage unavailable — URL still persists */
       }
@@ -648,10 +699,11 @@ export default function BandanaQuizPage() {
   }, [step]);
 
   const cleanSize = size.replace(/\s+/g, '');
-  const cleanColor = color.replace('#', '');
-  const designHref = `/custom-print/${shape.toLowerCase()}?size=${encodeURIComponent(
-    cleanSize,
-  )}&color=${cleanColor}&qty=${qty}&print=${print}&layout=${layout}&intent=${intent}&start=1`;
+  // Hand-off to the wizard carries ONLY the artwork (via the `cb:quiz:logo`
+  // sessionStorage stash) plus a fresh-start flag — deliberately NOT the composed
+  // quiz design (size / colour / qty / print / layout / intent). The shopper
+  // re-tweaks from scratch in the wizard; just their uploaded artwork comes along.
+  const designHref = `/custom-print/${shape.toLowerCase()}?start=1`;
   const calcHref = `/bandana-calculator?shape=${shape.toLowerCase()}&size=${cleanSize}&qty=${qty}&print=${print}`;
 
   // Smooth crossfade between steps / preview images via the View Transitions API
@@ -752,9 +804,12 @@ export default function BandanaQuizPage() {
     // Idea picks are already a hosted bandana image, so we use them directly.
     void (async () => {
       try {
-        let designUrl = '';
+        let designUrl = ''; // the composed design OUTPUT (bandana preview)
+        let artworkUrl = ''; // the user's ORIGINAL uploaded artwork
         if (logoPreview && /^https?:\/\//.test(logoPreview)) {
-          designUrl = logoPreview; // idea pick — already a hosted design image
+          // Idea pick — already a hosted image; it's both the artwork and output.
+          designUrl = logoPreview;
+          artworkUrl = logoPreview;
         } else {
           const svg = document.querySelector<SVGSVGElement>(
             'svg[aria-label$="preview"]',
@@ -765,14 +820,18 @@ export default function BandanaQuizPage() {
               designUrl =
                 (await uploadImage(png, 'bandana-design.png')) || '';
             } catch {
-              /* rasterize failed — fall back to hosting the raw artwork below */
+              /* rasterize failed — fall back to the raw artwork below */
             }
           }
-          if (!designUrl && logoPreview?.startsWith('data:')) {
-            designUrl =
-              (await uploadImage(logoPreview, logoName || 'quiz-design.png')) ||
+          // Host the user's ORIGINAL artwork separately, so the email can show
+          // BOTH the composed design output and the raw artwork.
+          if (logoPreview?.startsWith('data:')) {
+            artworkUrl =
+              (await uploadImage(logoPreview, logoName || 'quiz-artwork.png')) ||
               '';
           }
+          // If the preview couldn't rasterize, use the raw artwork as the output.
+          if (!designUrl) designUrl = artworkUrl;
         }
         const body = new URLSearchParams({
           email: email.trim(),
@@ -786,6 +845,7 @@ export default function BandanaQuizPage() {
           intent,
           layout,
           designUrl,
+          artworkUrl,
         });
         await fetch('/bandana-quiz', {method: 'POST', body});
       } catch {
@@ -1364,6 +1424,12 @@ export default function BandanaQuizPage() {
                                     // "No design yet" → drop any prior upload so it
                                     // can't carry into the preview / quote / wizard.
                                     if (it.value === 'help') onLogoRemove();
+                                    // "Ready" = a finished full design (no layout
+                                    // step) — clear any layout carried over from the
+                                    // layout/help path so the preview & quote show
+                                    // the full-bleed design, not a repeat pattern.
+                                    if (it.value === 'ready')
+                                      setLayout(patternsFor(shape)[0].value);
                                   })
                                 }
                                 row
@@ -1718,6 +1784,7 @@ export default function BandanaQuizPage() {
                         }
                         layout={layout}
                         logoPreview={logoPreview}
+                        fullBleed={intent === 'ready'}
                       />
                     )}
                   </div>
@@ -1749,6 +1816,7 @@ function PreviewPanel({
   layoutVisual,
   layout,
   logoPreview,
+  fullBleed,
 }: {
   shape: Shape;
   color: string;
@@ -1769,6 +1837,8 @@ function PreviewPanel({
   layoutVisual: boolean;
   layout: string;
   logoPreview: string | null;
+  // Ready full design → render the artwork edge-to-edge (no fabric colour behind).
+  fullBleed?: boolean;
 }) {
   const pattern = patternsFor(shape).find((p) => p.value === layout);
   // Which face the print-step preview is showing. Double-sided lets the shopper
@@ -1847,9 +1917,12 @@ function PreviewPanel({
               shape={shape}
               baseColor={color}
               logoPreview={logoPreview}
-              marks={pattern?.marks ?? []}
-              fullDesign={!!pattern?.full}
-              seamless={!!pattern?.seamless}
+              // Ready (fullBleed) is ALWAYS a full-bleed design — never a repeat
+              // pattern — even if a stale `layout` lingers from a path switch.
+              marks={fullBleed ? [] : (pattern?.marks ?? [])}
+              fullDesign={fullBleed || !!pattern?.full}
+              seamless={!fullBleed && !!pattern?.seamless}
+              bleed={fullBleed}
               logoRotate={0}
               logoScale={100}
               compact
@@ -2040,9 +2113,10 @@ function ResultCard({
           <BandanaPreview
             shape={shape}
             baseColor={color}
-            logoPreview={null}
+            logoPreview={intent === 'ready' ? logoPreview : null}
             marks={[]}
-            fullDesign={false}
+            fullDesign={intent === 'ready' && !!logoPreview}
+            bleed={intent === 'ready'}
             logoRotate={0}
             logoScale={100}
             blank={print === 'solid'}

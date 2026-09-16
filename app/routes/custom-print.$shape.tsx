@@ -558,10 +558,11 @@ export default function CustomDesign() {
     // CDN write) and stashes it in sessionStorage; we hydrate the front `logo`
     // here so the Design step shows it and the Quote step's existing (single,
     // deduped) upload hosts it — same path as a file uploaded in the wizard.
-    // Gated on the quiz signature (`intent`) and consumed once (cleared after) so
-    // it can never leak into an unrelated wizard visit. Purely additive: if the
-    // stash is absent or unreadable, the wizard behaves exactly as before.
-    if (intentParam) {
+    // Gated on the `start` flag (the quiz / estimator "start my order" signal) and
+    // consumed once (cleared after) so it can never leak into an unrelated wizard
+    // visit. Purely additive: if the stash is absent or unreadable, the wizard
+    // behaves exactly as before.
+    if (startParam) {
       try {
         const raw = sessionStorage.getItem('cb:quiz:logo');
         if (raw) {

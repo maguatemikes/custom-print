@@ -17,6 +17,7 @@ function BandanaPreviewImpl({
   rowSpace = 100,
   compact,
   blank = false,
+  bleed = false,
   badge = null,
   proofLabel = null,
   flipSide = null,
@@ -36,6 +37,9 @@ function BandanaPreviewImpl({
   rowSpace?: number;
   compact?: boolean;
   blank?: boolean;
+  // Full-bleed: render the artwork edge-to-edge with NO fabric colour showing.
+  // Used for a "ready" full design where the artwork IS the whole bandana.
+  bleed?: boolean;
   badge?: string | null;
   proofLabel?: string | null;
   flipSide?: 'front' | 'back' | null;
@@ -69,6 +73,10 @@ function BandanaPreviewImpl({
   const offX = ((posX - 50) / 50) * 200;
   const offY = ((posY - 50) / 50) * 200;
   const fullArt = `translate(${offX} ${offY}) ${art}`;
+  // Coverage of the full-print artwork: 0.6 leaves a fabric border (layout-path
+  // "Full print" look); bleed = 1.0 fills the whole shape edge-to-edge (ready
+  // full design) so no base colour shows behind it.
+  const fill = bleed ? 1 : FULL_PRINT_FILL;
 
   // Placeholder ink flips to light on dark bases so it stays visible on any
   // base colour (adaptive contrast rather than a fixed dark tone).
@@ -225,17 +233,17 @@ function BandanaPreviewImpl({
                    hypotenuse; the square keeps canvas-centre. */
                 <g
                   transform={`${
-                    isTriangle
+                    isTriangle && !bleed
                       ? `translate(${TRI_FULL_CENTER.x} ${TRI_FULL_CENTER.y}) `
                       : ''
                   }${fullArt}`}
                 >
                   <image
                     href={logoPreview}
-                    x={-(400 * FULL_PRINT_FILL) / 2}
-                    y={-(400 * FULL_PRINT_FILL) / 2}
-                    width={400 * FULL_PRINT_FILL}
-                    height={400 * FULL_PRINT_FILL}
+                    x={-(400 * fill) / 2}
+                    y={-(400 * fill) / 2}
+                    width={400 * fill}
+                    height={400 * fill}
                     preserveAspectRatio="xMidYMid slice"
                   />
                 </g>
