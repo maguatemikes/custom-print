@@ -266,7 +266,13 @@ export async function action({request}: Route.ActionArgs) {
     COLORS.find((c) => c.hex.toLowerCase() === colorHex.toLowerCase())?.name ??
     'Custom colour';
 
-  const origin = new URL(request.url).origin;
+  // The resume link is emailed to real customers, so it must always point at the
+  // production storefront — never localhost or a *.workers.dev preview (a quote
+  // fired from dev would otherwise bake in an unreachable link).
+  const reqOrigin = new URL(request.url).origin;
+  const origin = /localhost|127\.0\.0\.1|\.workers\.dev/i.test(reqOrigin)
+    ? 'https://custombandanas.shop'
+    : reqOrigin;
   const cleanSize = size.replace(/\s+/g, '');
   const cleanColor = colorHex.replace('#', '');
   const resumeLink = `${origin}/custom-print/${shape.toLowerCase()}?size=${encodeURIComponent(
