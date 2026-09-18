@@ -233,6 +233,7 @@ export async function action({request}: Route.ActionArgs) {
   const useCaseOther = g('useCaseOther');
   const designUrl = /^https?:\/\//.test(g('designUrl')) ? g('designUrl') : '';
   const artworkUrl = /^https?:\/\//.test(g('artworkUrl')) ? g('artworkUrl') : '';
+  const eventDateRaw = g('eventDate');
   const isSolid = print === 'solid';
 
   const useCaseLabel =
@@ -265,6 +266,21 @@ export async function action({request}: Route.ActionArgs) {
   const colorName =
     COLORS.find((c) => c.hex.toLowerCase() === colorHex.toLowerCase())?.name ??
     'Custom colour';
+
+  // Event / need-by date → a friendly label + the "order by" date (30-day make +
+  // ship window), so the customer, boss, and supplier all see the deadline.
+  let eventDateLabel = '';
+  let orderByLabel = '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(eventDateRaw)) {
+    const ev = new Date(`${eventDateRaw}T00:00:00`);
+    if (!Number.isNaN(ev.getTime())) {
+      const dopts = {month: 'short', day: 'numeric', year: 'numeric'} as const;
+      eventDateLabel = ev.toLocaleDateString('en-US', dopts);
+      orderByLabel = new Date(
+        ev.getTime() - 30 * 86400000,
+      ).toLocaleDateString('en-US', dopts);
+    }
+  }
 
   // The resume link is emailed to real customers, so it must always point at the
   // production storefront — never localhost or a *.workers.dev preview (a quote
@@ -335,6 +351,8 @@ export async function action({request}: Route.ActionArgs) {
     unit_price: unitStr,
     estimated_total: totalStr,
     next_tier: nextTierHint,
+    event_date: eventDateLabel,
+    order_by: orderByLabel,
     // Idea picks carry a real hosted image; uploads (base64) and solid have none
     // yet, so fall back to the use-case lifestyle photo — never a broken image.
     design_url:
@@ -449,6 +467,7 @@ export default function BandanaQuizPage() {
   const [artOk, setArtOk] = useState(false); // "Is this your artwork?" confirm
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [eventDate, setEventDate] = useState(''); // event / need-by date (yyyy-mm-dd)
   // Floating full-spectrum picker — the escape hatch when the shopper's colour
   // isn't in the swatch grid.
   const [spectrumOpen, setSpectrumOpen] = useState(false);
@@ -524,7 +543,7 @@ export default function BandanaQuizPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    const keys = ['step', 'useCase', 'shape', 'color', 'size', 'qty', 'print', 'layout', 'intent', 'idea'];
+    const keys = ['step', 'useCase', 'shape', 'color', 'size', 'qty', 'print', 'layout', 'intent', 'idea', 'event'];
     const hasUrl = keys.some((k) => searchParams.has(k));
     let saved: Record<string, string> | null = null;
     if (!hasUrl) {
@@ -582,6 +601,9 @@ export default function BandanaQuizPage() {
     const id2 = get('idea');
     if (id2 && IDEAS.some((x) => x.value === id2)) setIdea(id2);
 
+    const evd = get('event');
+    if (evd && /^\d{4}-\d{2}-\d{2}$/.test(evd)) setEventDate(evd);
+
     const st = get('step');
     if (st != null) {
       const n = Math.floor(Number(st));
@@ -589,7 +611,7 @@ export default function BandanaQuizPage() {
       // resume only re-enters an in-progress question (never the result step 10).
       if (
         Number.isFinite(n) &&
-        (hasUrl ? n >= 0 && n <= 12 : n >= 1 && n <= 12 && n !== 10)
+        (hasUrl ? n >= 0 && n <= 13 : n >= 1 && n <= 13 && n !== 10)
       ) {
         setStep(n);
       }
@@ -629,7 +651,7 @@ export default function BandanaQuizPage() {
     if (!hydrated) return;
     const QUIZ_KEYS = [
       'step', 'useCase', 'useOther', 'shape', 'color', 'size', 'qty', 'print',
-      'layout', 'intent', 'idea',
+      'layout', 'intent', 'idea', 'event',
     ];
     // At step 0 write nothing (clean intro URL). From step 1 on, write only the
     // params the shopper has actually set — blanks (empty idea / useOther) are
@@ -650,6 +672,7 @@ export default function BandanaQuizPage() {
           };
     if (step !== 0 && useCaseOther) snapshot.useOther = useCaseOther;
     if (step !== 0 && idea) snapshot.idea = idea;
+    if (step !== 0 && eventDate) snapshot.event = eventDate;
     const t = setTimeout(() => {
       setSearchParams(
         (prev) => {
@@ -684,12 +707,55 @@ export default function BandanaQuizPage() {
     layout,
     intent,
     idea,
+    eventDate,
     setSearchParams,
   ]);
 
   const sizes = sizesFor(shape);
   const printLabel =
     PRINT_OPTIONS.find((p) => p.value === print)?.label ?? 'Single side print';
+
+  // Event-date step: from the chosen date, derive the "order by" date (a 30-day
+  // make + ship window) and a readiness status, shown live under the picker.
+  const EVENT_WINDOW_DAYS = 30;
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const eventInfo = (() => {
+    if (!eventDate) return null;
+    const ev = new Date(`${eventDate}T00:00:00`);
+    if (Number.isNaN(ev.getTime())) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const MS = 86400000;
+    const days = Math.round((ev.getTime() - today.getTime()) / MS);
+    const orderBy = new Date(ev.getTime() - EVENT_WINDOW_DAYS * MS);
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    let tone: 'ok' | 'warn' | 'bad';
+    let message: string;
+    if (days < 0) {
+      tone = 'bad';
+      message = 'That date has passed';
+    } else if (days >= EVENT_WINDOW_DAYS) {
+      tone = 'ok';
+      message = `On track · ${days} days out`;
+    } else if (days >= 14) {
+      tone = 'warn';
+      message = `Tight · ${days} days — order now`;
+    } else {
+      tone = 'bad';
+      message = `Rush · only ${days} days — contact us`;
+    }
+    return {
+      eventDateLabel: fmt(ev),
+      orderByLabel: days < 0 ? '—' : fmt(orderBy),
+      tone,
+      message,
+    };
+  })();
 
   // --- Intro: auto-advance the design slider (paused for reduced-motion).
   // Pure eye-candy, resets when the quiz starts. ---
@@ -753,14 +819,16 @@ export default function BandanaQuizPage() {
   //   help   → …→print→design→idea→colour→layout→email
   const IDEA_STEP = 11;
   const CONFIRM_STEP = 12;
+  const EVENT_STEP = 13; // event / need-by date — the last question on EVERY path
   const questionSteps = (() => {
     const lead = [1, 5, 2, 4, 6]; // use-case → qty → shape → size → print
-    if (print === 'solid') return [...lead, 3, 9]; // + colour → email
+    // The event-date step is inserted just before the email step on every path.
+    if (print === 'solid') return [...lead, 3, EVENT_STEP, 9]; // + colour → date → email
     const withDesign = [...lead, 7]; // + design-status (the branch point)
-    // Ready = a finished full design → confirm the artwork → email (no colour/layout).
-    if (intent === 'ready') return [...withDesign, CONFIRM_STEP, 9];
-    if (intent === 'layout') return [...withDesign, 3, 8, 9]; // colour → layout → email
-    return [...withDesign, IDEA_STEP, 3, 8, 9]; // help: idea → colour → layout → email
+    // Ready = a finished full design → confirm the artwork → date → email (no colour/layout).
+    if (intent === 'ready') return [...withDesign, CONFIRM_STEP, EVENT_STEP, 9];
+    if (intent === 'layout') return [...withDesign, 3, 8, EVENT_STEP, 9]; // colour → layout → date → email
+    return [...withDesign, IDEA_STEP, 3, 8, EVENT_STEP, 9]; // help: idea → colour → layout → date → email
   })();
   const RESULT_STEP = 10;
   const qTotal = questionSteps.length;
@@ -852,6 +920,7 @@ export default function BandanaQuizPage() {
           layout,
           designUrl,
           artworkUrl,
+          eventDate,
         });
         await fetch('/bandana-quiz', {method: 'POST', body});
       } catch {
@@ -964,6 +1033,7 @@ export default function BandanaQuizPage() {
                   printLabel={printLabel}
                   layout={layout}
                   email={email}
+                  eventInfo={eventInfo}
                   designHref={designHref}
                   calcHref={calcHref}
                   logoPreview={logoPreview}
@@ -1677,6 +1747,69 @@ export default function BandanaQuizPage() {
                       ) : null}
 
                       {/* 9 — Email (collect-only, keeps its button) */}
+                      {step === EVENT_STEP ? (
+                        <>
+                          <QuestionHead
+                            step={qPos}
+                            title="When do you need them by?"
+                          />
+                          <p className="-mt-2 mb-5 text-sm leading-relaxed text-muted">
+                            Custom bandanas are{' '}
+                            <span className="font-semibold text-ink">
+                              made to order
+                            </span>{' '}
+                            — production and shipping usually take{' '}
+                            <span className="font-semibold text-ink">
+                              25–30 days
+                            </span>
+                            . Pick your event date and we&apos;ll check
+                            you&apos;re on time.
+                          </p>
+                          <div>
+                            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                              Your event / need-by date
+                            </span>
+                            <DatePicker
+                              value={eventDate}
+                              min={todayISO}
+                              onChange={setEventDate}
+                            />
+                          </div>
+                          {eventInfo ? (
+                            <div className="mt-4 flex flex-wrap gap-2.5">
+                              <div className="min-w-[150px] flex-1 rounded-xl border border-black/10 bg-mint px-3.5 py-2.5">
+                                <div className="text-xs text-muted">Order by</div>
+                                <div className="mt-0.5 text-lg font-extrabold text-ink">
+                                  {eventInfo.orderByLabel}
+                                </div>
+                                <div className="text-[11px] text-muted">
+                                  to arrive in time
+                                </div>
+                              </div>
+                              <div
+                                className={`min-w-[150px] flex-1 rounded-xl border px-3.5 py-2.5 ${
+                                  eventInfo.tone === 'ok'
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : eventInfo.tone === 'warn'
+                                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                      : 'border-red-200 bg-red-50 text-red-700'
+                                }`}
+                              >
+                                <div className="text-xs opacity-80">Status</div>
+                                <div className="mt-1 text-sm font-bold">
+                                  {eventInfo.message}
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+                          <StepFooter
+                            onBack={back}
+                            onContinue={next}
+                            label="Almost there"
+                          />
+                        </>
+                      ) : null}
+
                       {step === 9 ? (
                         <>
                           <QuestionHead
@@ -1786,7 +1919,9 @@ export default function BandanaQuizPage() {
                         // ends on a preview of what they'll get. Solid has no design
                         // → it keeps the plain blank preview.
                         layoutVisual={
-                          step === 8 || (step === 9 && print !== 'solid')
+                          step === 8 ||
+                          ((step === 9 || step === EVENT_STEP) &&
+                            print !== 'solid')
                         }
                         layout={layout}
                         logoPreview={logoPreview}
@@ -1983,6 +2118,7 @@ function ResultCard({
   printLabel,
   layout,
   email,
+  eventInfo,
   designHref,
   calcHref,
   logoPreview,
@@ -2002,6 +2138,12 @@ function ResultCard({
   printLabel: string;
   layout: string;
   email: string;
+  eventInfo: {
+    eventDateLabel: string;
+    orderByLabel: string;
+    tone: 'ok' | 'warn' | 'bad';
+    message: string;
+  } | null;
   designHref: string;
   calcHref: string;
   logoPreview: string | null;
@@ -2071,6 +2213,10 @@ function ResultCard({
         ]
       : []),
     {label: 'Quantity', value: `${qty.toLocaleString()} pcs`},
+    // Need-by date (from the event step) — shown when the shopper picked one.
+    ...(eventInfo
+      ? [{label: 'Need by', value: eventInfo.eventDateLabel}]
+      : []),
     // Design status (artwork ready / needs help) — only when there's a print.
     ...(print !== 'solid' && intentLabel
       ? [{label: 'Design status', value: intentLabel}]
@@ -2146,6 +2292,32 @@ function ResultCard({
             </div>
           ))}
         </dl>
+
+        {/* Need-by readiness — same order-by window + status as the event step,
+            so the shopper sees at a glance whether their date is achievable. */}
+        {eventInfo ? (
+          <div className="mt-4 flex flex-wrap gap-2.5">
+            <div className="min-w-[150px] flex-1 rounded-xl border border-black/10 bg-mint px-3.5 py-2.5">
+              <div className="text-xs text-muted">Order by</div>
+              <div className="mt-0.5 text-lg font-extrabold text-ink">
+                {eventInfo.orderByLabel}
+              </div>
+              <div className="text-[11px] text-muted">to arrive in time</div>
+            </div>
+            <div
+              className={`min-w-[150px] flex-1 rounded-xl border px-3.5 py-2.5 ${
+                eventInfo.tone === 'ok'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : eventInfo.tone === 'warn'
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-red-200 bg-red-50 text-red-700'
+              }`}
+            >
+              <div className="text-xs opacity-80">Status</div>
+              <div className="mt-1 text-sm font-bold">{eventInfo.message}</div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Change your mind on quantity? Tap a tier — buy more, save more. Same
             volume ladder as the calculator; updates the quote live. Shown ABOVE
@@ -2820,6 +2992,175 @@ function PrintGlyph({
 /* -------------------------------------------------------------------------- */
 /* Small building blocks (local to the quiz)                                  */
 /* -------------------------------------------------------------------------- */
+
+/* Custom (non-native) calendar dropdown — on-brand month grid, future-only, with
+   outside-click / Escape close. Emits a yyyy-mm-dd string like the native input. */
+function DatePicker({
+  value,
+  onChange,
+  min,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const parse = (s?: string) => {
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const [y, m, d] = s.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  };
+  const selected = parse(value);
+  const minDate = parse(min);
+  const [view, setView] = useState(() => {
+    const base = selected ?? new Date();
+    return new Date(base.getFullYear(), base.getMonth(), 1);
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const fmtField = (d: Date) =>
+    d.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const minTime = minDate ? minDate.getTime() : -Infinity;
+  const cells: Array<number | null> = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const WD = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+  return (
+    <div className="relative w-full max-w-xs" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className="flex h-11 w-full items-center justify-between rounded-xl border border-black/15 bg-white px-3.5 text-sm text-ink transition hover:border-black/30 focus:border-brand-500 focus:outline-none"
+      >
+        <span className={selected ? 'font-medium text-ink' : 'text-muted'}>
+          {selected ? fmtField(selected) : 'Select a date'}
+        </span>
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4 shrink-0 text-brand-600"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <rect x="3" y="4" width="18" height="17" rx="2" />
+          <path d="M3 9h18M8 2v4M16 2v4" />
+        </svg>
+      </button>
+
+      {open ? (
+        <div
+          role="dialog"
+          aria-label="Choose a date"
+          className="absolute left-0 top-[calc(100%+6px)] z-30 w-[290px] max-w-[calc(100vw-40px)] rounded-2xl border border-black/10 bg-white p-2.5 shadow-[0_20px_50px_-22px_rgba(16,20,16,0.45)]"
+        >
+          <div className="mb-1 flex items-center justify-between">
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => setView(new Date(year, month - 1, 1))}
+              className="grid h-8 w-8 place-items-center rounded-lg text-ink transition hover:bg-mint"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <span className="text-sm font-bold text-ink">
+              {view.toLocaleDateString('en-US', {month: 'long', year: 'numeric'})}
+            </span>
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => setView(new Date(year, month + 1, 1))}
+              className="grid h-8 w-8 place-items-center rounded-lg text-ink transition hover:bg-mint"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-0.5">
+            {WD.map((w) => (
+              <div
+                key={w}
+                className="py-0.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted"
+              >
+                {w}
+              </div>
+            ))}
+            {cells.map((d, i) => {
+              if (d === null) return <div key={`b${i}`} />;
+              const dd = new Date(year, month, d);
+              const disabled = dd.getTime() < minTime;
+              const isSel = Boolean(selected && iso(dd) === iso(selected));
+              const isToday = dd.getTime() === today.getTime();
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    onChange(iso(dd));
+                    setOpen(false);
+                  }}
+                  className={`h-8 rounded-lg text-[13px] transition ${
+                    isSel
+                      ? 'bg-brand-500 font-bold text-white'
+                      : disabled
+                        ? 'cursor-not-allowed text-black/25'
+                        : `text-ink hover:bg-mint ${
+                            isToday
+                              ? 'font-bold text-brand-700 ring-1 ring-inset ring-brand-500/40'
+                              : ''
+                          }`
+                  }`}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function QuestionHead({
   step,
