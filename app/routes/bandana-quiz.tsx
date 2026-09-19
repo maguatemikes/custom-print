@@ -1087,11 +1087,11 @@ export default function BandanaQuizPage() {
                   {/* Question (left on desktop, below preview on mobile) — a
                       square; content at top, Continue pinned bottom-left. */}
                   <div
-                    className={`order-2 flex min-h-0 flex-col p-6 md:order-1 md:p-8 ${
+                    className={`order-2 flex min-h-0 min-w-0 flex-col p-6 md:order-1 md:p-8 ${
                       step === IDEA_STEP ? 'md:col-span-2' : 'overflow-y-auto'
                     }`}
                   >
-                    <div key={step} className="qz-step flex flex-1 flex-col">
+                    <div key={step} className="qz-step flex min-w-0 flex-1 flex-col">
                       {/* 1 — Use case */}
                       {step === 1 ? (
                         <>
@@ -1588,14 +1588,14 @@ export default function BandanaQuizPage() {
                       {/* 11 — Idea Center (help pathway: browse starter ideas) */}
                       {step === IDEA_STEP ? (
                         <>
-                          <div className="flex items-start justify-between gap-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
                             <QuestionHead
                               step={qPos}
                               title="Pick a design idea"
                               sub="Swipe through design directions and pick one to start."
                             />
                             {/* Category filter — custom dropdown (not native). */}
-                            <div className="flex shrink-0 items-center gap-2 pt-1">
+                            <div className="flex shrink-0 items-center gap-2 md:pt-1">
                               <span className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
                                 Filter
                               </span>
@@ -1616,7 +1616,7 @@ export default function BandanaQuizPage() {
                           <div className="mb-4 border-t border-black/10" />
                           {/* Full-width carousel — native touch/trackpad swipe on
                               the scroller, plus prev/next buttons. Sharp images. */}
-                          <div className="relative">
+                          <div className="relative min-w-0">
                             <div
                               ref={ideaScrollRef}
                               onPointerDown={onIdeaDown}
