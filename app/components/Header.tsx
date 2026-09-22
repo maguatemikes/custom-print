@@ -75,8 +75,8 @@ function buildNav(
       leadLabel: 'All made-to-order',
       children: shapeLinks.length ? shapeLinks : undefined,
     },
-    // Standalone page — the live bandana pricing calculator. No dropdown.
-    {title: 'Bandana Calculator', to: '/bandana-calculator'},
+    // Standalone page — the 60-second bandana quiz. No dropdown.
+    {title: 'Bandana Quiz', to: '/bandana-quiz'},
   ];
 }
 
@@ -336,8 +336,14 @@ export function HeaderMenu({
   collections?: ReadonlyArray<{title: string; handle: string}>;
 }) {
   const {close} = useAside();
-  if (viewport !== 'mobile') return null;
   const nav = buildNav(collections ?? []);
+  // Collapsible sections so the menu isn't one giant scroll. "Custom Digital
+  // Print" starts open so its shape links (Square / Triangle) are visible right
+  // away; "Shop" (14+ collections) starts collapsed.
+  const [openSection, setOpenSection] = useState<string | null>(
+    'Custom Digital Print',
+  );
+  if (viewport !== 'mobile') return null;
 
   return (
     <nav className="flex flex-col gap-1 p-2" role="navigation">
@@ -350,35 +356,67 @@ export function HeaderMenu({
       >
         Home
       </NavLink>
-      {nav.map((item) => (
-        <div key={item.title}>
-          <NavLink
-            to={item.to}
-            onClick={close}
-            prefetch="intent"
-            className={`${mobileLinkClass} ${
-              item.accent ? '!text-brand-600' : ''
-            }`}
-          >
-            {item.title}
-          </NavLink>
-          {item.children && item.children.length > 0 && (
-            <div className="ml-3 flex flex-col border-l border-black/10 pl-2">
-              {item.children.map((l) => (
-                <NavLink
-                  key={l.label}
-                  to={l.to}
-                  onClick={close}
-                  prefetch="intent"
-                  className="block rounded-lg px-3 py-2 text-base font-medium text-muted hover:bg-mint hover:text-ink"
+      {nav.map((item) => {
+        const hasChildren = !!item.children && item.children.length > 0;
+        const isOpen = openSection === item.title;
+        return (
+          <div key={item.title}>
+            <div className="flex items-center">
+              <NavLink
+                to={item.to}
+                onClick={close}
+                prefetch="intent"
+                className={`${mobileLinkClass} flex-1 ${
+                  item.accent ? '!text-brand-600' : ''
+                }`}
+              >
+                {item.title}
+              </NavLink>
+              {hasChildren && (
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${item.title}`}
+                  onClick={() =>
+                    setOpenSection(isOpen ? null : item.title)
+                  }
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-ink transition hover:bg-mint"
                 >
-                  {l.label}
-                </NavLink>
-              ))}
+                  <svg
+                    viewBox="0 0 24 24"
+                    className={`h-5 w-5 transition-transform duration-200 ${
+                      isOpen ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      ))}
+            {hasChildren && isOpen && (
+              <div className="ml-3 flex flex-col border-l border-black/10 pl-2">
+                {item.children!.map((l) => (
+                  <NavLink
+                    key={l.label}
+                    to={l.to}
+                    onClick={close}
+                    prefetch="intent"
+                    className="block rounded-lg px-3 py-2 text-base font-medium text-muted hover:bg-mint hover:text-ink"
+                  >
+                    {l.label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </nav>
   );
 }

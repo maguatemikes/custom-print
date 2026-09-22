@@ -267,17 +267,17 @@ export async function action({request}: Route.ActionArgs) {
     COLORS.find((c) => c.hex.toLowerCase() === colorHex.toLowerCase())?.name ??
     'Custom colour';
 
-  // Event / need-by date → a friendly label + the "order by" date (30-day make +
-  // ship window), so the customer, boss, and supplier all see the deadline.
+  // Event date → the date they chose + the estimated arrival (30-day make + ship
+  // window after that date). No rush logic — we don't do rush days.
   let eventDateLabel = '';
-  let orderByLabel = '';
+  let arrivalLabel = '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(eventDateRaw)) {
     const ev = new Date(`${eventDateRaw}T00:00:00`);
     if (!Number.isNaN(ev.getTime())) {
       const dopts = {month: 'short', day: 'numeric', year: 'numeric'} as const;
       eventDateLabel = ev.toLocaleDateString('en-US', dopts);
-      orderByLabel = new Date(
-        ev.getTime() - 30 * 86400000,
+      arrivalLabel = new Date(
+        ev.getTime() + 30 * 86400000,
       ).toLocaleDateString('en-US', dopts);
     }
   }
@@ -295,10 +295,16 @@ export async function action({request}: Route.ActionArgs) {
     cleanSize,
   )}&color=${cleanColor}&qty=${qty}&print=${print}&layout=${layout}&intent=${intent}&start=1`;
 
-  const firstName = (email.split('@')[0] || '')
-    .replace(/[._+-]+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim();
+  // Name + phone come straight from the quiz form now. first_name prefers the
+  // entered name (first token); falls back to an email-derived guess if blank.
+  const fullName = g('name');
+  const phone = g('phone');
+  const firstName = fullName
+    ? fullName.split(/\s+/)[0]
+    : (email.split('@')[0] || '')
+        .replace(/[._+-]+/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim();
 
   // Itemized rows that MIRROR the on-screen result card (same conditional logic):
   // colour is hidden on the full-design "ready" path, layout only shows when a
@@ -339,6 +345,8 @@ export async function action({request}: Route.ActionArgs) {
     source: 'bandana_quiz',
     email,
     first_name: firstName,
+    full_name: fullName || firstName,
+    phone,
     use_case: useCaseLabel,
     shape,
     size,
@@ -352,7 +360,7 @@ export async function action({request}: Route.ActionArgs) {
     estimated_total: totalStr,
     next_tier: nextTierHint,
     event_date: eventDateLabel,
-    order_by: orderByLabel,
+    arrival_date: arrivalLabel,
     // Idea picks carry a real hosted image; uploads (base64) and solid have none
     // yet, so fall back to the use-case lifestyle photo — never a broken image.
     design_url:
@@ -467,6 +475,10 @@ export default function BandanaQuizPage() {
   const [artOk, setArtOk] = useState(false); // "Is this your artwork?" confirm
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [name, setName] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
   const [eventDate, setEventDate] = useState(''); // event / need-by date (yyyy-mm-dd)
   // Floating full-spectrum picker — the escape hatch when the shopper's colour
   // isn't in the swatch grid.
@@ -715,45 +727,25 @@ export default function BandanaQuizPage() {
   const printLabel =
     PRINT_OPTIONS.find((p) => p.value === print)?.label ?? 'Single side print';
 
-  // Event-date step: from the chosen date, derive the "order by" date (a 30-day
-  // make + ship window) and a readiness status, shown live under the picker.
+  // Event-date step: echo the date they chose + the estimated arrival (a 30-day
+  // make + ship window after that date). No rush/status — we don't do rush days.
   const EVENT_WINDOW_DAYS = 30;
   const todayISO = new Date().toISOString().slice(0, 10);
   const eventInfo = (() => {
     if (!eventDate) return null;
     const ev = new Date(`${eventDate}T00:00:00`);
     if (Number.isNaN(ev.getTime())) return null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const MS = 86400000;
-    const days = Math.round((ev.getTime() - today.getTime()) / MS);
-    const orderBy = new Date(ev.getTime() - EVENT_WINDOW_DAYS * MS);
+    const arrival = new Date(ev.getTime() + EVENT_WINDOW_DAYS * MS);
     const fmt = (d: Date) =>
       d.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
       });
-    let tone: 'ok' | 'warn' | 'bad';
-    let message: string;
-    if (days < 0) {
-      tone = 'bad';
-      message = 'That date has passed';
-    } else if (days >= EVENT_WINDOW_DAYS) {
-      tone = 'ok';
-      message = `On track · ${days} days out`;
-    } else if (days >= 14) {
-      tone = 'warn';
-      message = `Tight · ${days} days — order now`;
-    } else {
-      tone = 'bad';
-      message = `Rush · only ${days} days — contact us`;
-    }
     return {
       eventDateLabel: fmt(ev),
-      orderByLabel: days < 0 ? '—' : fmt(orderBy),
-      tone,
-      message,
+      arrivalLabel: fmt(arrival),
     };
   })();
 
@@ -864,11 +856,26 @@ export default function BandanaQuizPage() {
   }, [hydrated, step, email]);
 
   function submitEmail() {
+    let invalid = false;
+    if (!name.trim()) {
+      setNameError('Enter your name.');
+      invalid = true;
+    } else {
+      setNameError('');
+    }
     if (!EMAIL_RE.test(email.trim())) {
       setEmailError('Enter a valid email so we can send your recommendation.');
-      return;
+      invalid = true;
+    } else {
+      setEmailError('');
     }
-    setEmailError('');
+    if (phone.replace(/\D/g, '').length < 7) {
+      setPhoneError('Enter a phone number.');
+      invalid = true;
+    } else {
+      setPhoneError('');
+    }
+    if (invalid) return;
     // Fire the quote to FunnelKit via our server action (POST to this route's
     // action, which forwards to the webhook). Best-effort and non-blocking — the
     // shopper always advances to the result even if the send fails.
@@ -909,6 +916,8 @@ export default function BandanaQuizPage() {
         }
         const body = new URLSearchParams({
           email: email.trim(),
+          name: name.trim(),
+          phone: phone.trim(),
           useCase,
           useCaseOther,
           shape,
@@ -1033,6 +1042,8 @@ export default function BandanaQuizPage() {
                   printLabel={printLabel}
                   layout={layout}
                   email={email}
+                  name={name}
+                  phone={phone}
                   eventInfo={eventInfo}
                   designHref={designHref}
                   calcHref={calcHref}
@@ -1778,26 +1789,25 @@ export default function BandanaQuizPage() {
                           {eventInfo ? (
                             <div className="mt-4 flex flex-wrap gap-2.5">
                               <div className="min-w-[150px] flex-1 rounded-xl border border-black/10 bg-mint px-3.5 py-2.5">
-                                <div className="text-xs text-muted">Order by</div>
+                                <div className="text-xs text-muted">
+                                  Your date
+                                </div>
                                 <div className="mt-0.5 text-lg font-extrabold text-ink">
-                                  {eventInfo.orderByLabel}
+                                  {eventInfo.eventDateLabel}
                                 </div>
                                 <div className="text-[11px] text-muted">
-                                  to arrive in time
+                                  the date you chose
                                 </div>
                               </div>
-                              <div
-                                className={`min-w-[150px] flex-1 rounded-xl border px-3.5 py-2.5 ${
-                                  eventInfo.tone === 'ok'
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                    : eventInfo.tone === 'warn'
-                                      ? 'border-amber-200 bg-amber-50 text-amber-700'
-                                      : 'border-red-200 bg-red-50 text-red-700'
-                                }`}
-                              >
-                                <div className="text-xs opacity-80">Status</div>
-                                <div className="mt-1 text-sm font-bold">
-                                  {eventInfo.message}
+                              <div className="min-w-[150px] flex-1 rounded-xl border-2 border-emerald-400 bg-emerald-50 px-3.5 py-2.5">
+                                <div className="text-xs text-muted">
+                                  Estimated arrival
+                                </div>
+                                <div className="mt-0.5 text-lg font-extrabold text-ink">
+                                  {eventInfo.arrivalLabel}
+                                </div>
+                                <div className="text-[11px] text-muted">
+                                  about 30 days later
                                 </div>
                               </div>
                             </div>
@@ -1817,52 +1827,102 @@ export default function BandanaQuizPage() {
                             title="Where should we send it?"
                             sub="We'll send your recommendation and a design link straight to you."
                           />
-                          <label className="block">
-                            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
-                              Email
-                            </span>
-                            <input
-                              type="email"
-                              inputMode="email"
-                              autoComplete="email"
-                              value={email}
-                              onChange={(e) => {
-                                setEmail(e.target.value);
-                                if (emailError) setEmailError('');
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') submitEmail();
-                              }}
-                              placeholder="name@company.com"
-                              aria-invalid={Boolean(emailError)}
-                              className="h-11 w-full rounded-xl border border-black/15 bg-white px-3 text-sm text-ink transition focus:border-brand-500 focus:outline-none"
-                            />
-                            {emailError ? (
-                              <span className="mt-1.5 block text-sm text-red-600">
-                                {emailError}
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <label className="block">
+                              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                                Name
                               </span>
-                            ) : null}
-                          </label>
-                          <div className="mt-5 flex items-center justify-between gap-3">
-                            <button
-                              type="button"
-                              onClick={back}
-                              className="btn btn-outline px-6"
-                            >
-                              Back
-                            </button>
-                            <button
-                              type="button"
-                              onClick={submitEmail}
-                              className="btn btn-dark px-8 text-base"
-                            >
-                              Reveal my match
-                            </button>
+                              <input
+                                type="text"
+                                autoComplete="name"
+                                value={name}
+                                onChange={(e) => {
+                                  setName(e.target.value);
+                                  if (nameError) setNameError('');
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') submitEmail();
+                                }}
+                                placeholder="Your name"
+                                aria-invalid={Boolean(nameError)}
+                                className={`h-11 w-full rounded-xl border bg-white px-3 text-sm text-ink transition focus:outline-none ${
+                                  nameError
+                                    ? 'border-red-500 focus:border-red-500'
+                                    : 'border-black/15 focus:border-brand-500'
+                                }`}
+                              />
+                              {nameError ? (
+                                <span className="mt-1.5 block text-sm text-red-600">
+                                  {nameError}
+                                </span>
+                              ) : null}
+                            </label>
+                            <label className="block">
+                              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                                Phone
+                              </span>
+                              <input
+                                type="tel"
+                                inputMode="tel"
+                                autoComplete="tel"
+                                value={phone}
+                                onChange={(e) => {
+                                  setPhone(e.target.value);
+                                  if (phoneError) setPhoneError('');
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') submitEmail();
+                                }}
+                                placeholder="(555) 555-5555"
+                                aria-invalid={Boolean(phoneError)}
+                                className={`h-11 w-full rounded-xl border bg-white px-3 text-sm text-ink transition focus:outline-none ${
+                                  phoneError
+                                    ? 'border-red-500 focus:border-red-500'
+                                    : 'border-black/15 focus:border-brand-500'
+                                }`}
+                              />
+                              {phoneError ? (
+                                <span className="mt-1.5 block text-sm text-red-600">
+                                  {phoneError}
+                                </span>
+                              ) : null}
+                            </label>
+                            <label className="block sm:col-span-2">
+                              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                                Email
+                              </span>
+                              <input
+                                type="email"
+                                inputMode="email"
+                                autoComplete="email"
+                                value={email}
+                                onChange={(e) => {
+                                  setEmail(e.target.value);
+                                  if (emailError) setEmailError('');
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') submitEmail();
+                                }}
+                                placeholder="name@company.com"
+                                aria-invalid={Boolean(emailError)}
+                                className={`h-11 w-full rounded-xl border bg-white px-3 text-sm text-ink transition focus:outline-none ${
+                                  emailError
+                                    ? 'border-red-500 focus:border-red-500'
+                                    : 'border-black/15 focus:border-brand-500'
+                                }`}
+                              />
+                              {emailError ? (
+                                <span className="mt-1.5 block text-sm text-red-600">
+                                  {emailError}
+                                </span>
+                              ) : null}
+                            </label>
                           </div>
-                          <p className="mt-3 text-center text-xs text-muted">
-                            No spam — just your recommendation. Unsubscribe
-                            anytime.
-                          </p>
+                          <StepFooter
+                            onBack={back}
+                            onContinue={submitEmail}
+                            label="Reveal my match"
+                          />
                         </>
                       ) : null}
                     </div>
@@ -2118,6 +2178,8 @@ function ResultCard({
   printLabel,
   layout,
   email,
+  name,
+  phone,
   eventInfo,
   designHref,
   calcHref,
@@ -2138,11 +2200,11 @@ function ResultCard({
   printLabel: string;
   layout: string;
   email: string;
+  name: string;
+  phone: string;
   eventInfo: {
     eventDateLabel: string;
-    orderByLabel: string;
-    tone: 'ok' | 'warn' | 'bad';
-    message: string;
+    arrivalLabel: string;
   } | null;
   designHref: string;
   calcHref: string;
@@ -2179,6 +2241,9 @@ function ResultCard({
 
   // Itemized spec — the quote's line items (every answer from the quiz).
   const rows = [
+    // Contact — captured at the email step; shown here and sent to the CRM.
+    ...(name ? [{label: 'Name', value: name}] : []),
+    ...(phone ? [{label: 'Phone', value: phone}] : []),
     {label: 'For', value: useCaseLabel},
     {label: 'Style', value: `${shape} bandana`},
     // Colour is skipped on the full-design ("ready") pathway — the artwork
@@ -2293,28 +2358,23 @@ function ResultCard({
           ))}
         </dl>
 
-        {/* Need-by readiness — same order-by window + status as the event step,
-            so the shopper sees at a glance whether their date is achievable. */}
+        {/* Your date + estimated arrival (30-day make + ship window). No rush
+            status — matches the event step. */}
         {eventInfo ? (
           <div className="mt-4 flex flex-wrap gap-2.5">
             <div className="min-w-[150px] flex-1 rounded-xl border border-black/10 bg-mint px-3.5 py-2.5">
-              <div className="text-xs text-muted">Order by</div>
+              <div className="text-xs text-muted">Your date</div>
               <div className="mt-0.5 text-lg font-extrabold text-ink">
-                {eventInfo.orderByLabel}
+                {eventInfo.eventDateLabel}
               </div>
-              <div className="text-[11px] text-muted">to arrive in time</div>
+              <div className="text-[11px] text-muted">the date you chose</div>
             </div>
-            <div
-              className={`min-w-[150px] flex-1 rounded-xl border px-3.5 py-2.5 ${
-                eventInfo.tone === 'ok'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                  : eventInfo.tone === 'warn'
-                    ? 'border-amber-200 bg-amber-50 text-amber-700'
-                    : 'border-red-200 bg-red-50 text-red-700'
-              }`}
-            >
-              <div className="text-xs opacity-80">Status</div>
-              <div className="mt-1 text-sm font-bold">{eventInfo.message}</div>
+            <div className="min-w-[150px] flex-1 rounded-xl border-2 border-emerald-400 bg-emerald-50 px-3.5 py-2.5">
+              <div className="text-xs text-muted">Estimated arrival</div>
+              <div className="mt-0.5 text-lg font-extrabold text-ink">
+                {eventInfo.arrivalLabel}
+              </div>
+              <div className="text-[11px] text-muted">about 30 days later</div>
             </div>
           </div>
         ) : null}
@@ -2324,7 +2384,7 @@ function ResultCard({
             the total so the shopper picks a tier, then sees the resulting price. */}
         <div className="mt-5" role="radiogroup" aria-label="Change quantity tier">
           <div className="flex items-center justify-between px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">
-            <span>Volume</span>
+            <span>Buy more, save more</span>
             <span>Price / piece</span>
           </div>
           <div className="max-h-56 divide-y divide-black/5 overflow-y-auto rounded-xl border border-black/10">

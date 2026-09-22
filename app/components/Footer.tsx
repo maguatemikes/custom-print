@@ -14,7 +14,6 @@ const COLUMNS = [
     links: [
       {label: 'New arrivals', to: '/collections/all'},
       {label: 'All collections', to: '/collections'},
-      {label: 'Bandana Quiz', to: '/bandana-quiz'},
       {label: 'Bandana Calculator', to: '/bandana-calculator'},
       {label: 'Gift cards', to: '/'},
     ],
