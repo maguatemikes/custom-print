@@ -6,6 +6,7 @@ import type {
 import {
   data,
   Form,
+  redirect,
   useActionData,
   useNavigation,
   useOutletContext,
@@ -42,10 +43,13 @@ export const meta: Route.MetaFunction = () => {
   ];
 };
 
+// Address management now lives inline on the account dashboard; this route
+// stays as the mutation endpoint (its `action`), so a direct GET bounces to the
+// dashboard rather than rendering an orphaned page.
 export async function loader({context}: Route.LoaderArgs) {
   await context.customerAccount.handleAuthStatus();
 
-  return {};
+  return redirect('/account/orders');
 }
 
 export async function action({request, context}: Route.ActionArgs) {

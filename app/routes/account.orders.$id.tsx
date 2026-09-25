@@ -6,13 +6,6 @@ import type {
   OrderQuery,
 } from 'customer-accountapi.generated';
 import {CUSTOMER_ORDER_QUERY} from '~/graphql/customer-account/CustomerOrderQuery';
-import {
-  AccountCard,
-  IconBag,
-  IconPin,
-  IconTruck,
-  StatusChip,
-} from '~/components/AccountUI';
 
 export const meta: Route.MetaFunction = ({data}) => {
   return [
@@ -41,29 +34,16 @@ export async function loader({params, context}: Route.LoaderArgs) {
   }
 
   const {order} = data;
-
-  // Extract line items directly from nodes array
   const lineItems = order.lineItems.nodes;
-
-  // Extract discount applications directly from nodes array
   const discountApplications = order.discountApplications.nodes;
-
-  // Get fulfillment status from first fulfillment node
   const fulfillmentStatus = order.fulfillments.nodes[0]?.status ?? 'N/A';
-
-  // Get first discount value with proper type checking
   const firstDiscount = discountApplications[0]?.value;
 
-  // Type guard for MoneyV2 discount
   const discountValue =
     firstDiscount?.__typename === 'MoneyV2'
-      ? (firstDiscount as Extract<
-          typeof firstDiscount,
-          {__typename: 'MoneyV2'}
-        >)
+      ? (firstDiscount as Extract<typeof firstDiscount, {__typename: 'MoneyV2'}>)
       : null;
 
-  // Type guard for percentage discount
   const discountPercentage =
     firstDiscount?.__typename === 'PricingPercentageValue'
       ? (
@@ -83,115 +63,135 @@ export async function loader({params, context}: Route.LoaderArgs) {
   };
 }
 
+const cardCls =
+  'rounded-2xl border border-black/10 bg-white p-5 shadow-[0_8px_24px_-18px_rgba(11,22,34,0.35)] md:p-6';
+
+function fmtDate(iso?: string | null) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
 export default function OrderRoute() {
-  const {
-    order,
-    lineItems,
-    discountValue,
-    discountPercentage,
-    fulfillmentStatus,
-  } = useLoaderData<typeof loader>();
-  const hasDiscount = !!((discountValue && discountValue.amount) ||
-    discountPercentage);
+  const {order, lineItems, discountValue, discountPercentage, fulfillmentStatus} =
+    useLoaderData<typeof loader>();
+  const hasDiscount = !!(
+    (discountValue && discountValue.amount) ||
+    discountPercentage
+  );
+
+  const status = (order.fulfillmentStatus ?? '').toUpperCase();
+  const fulfilled = status === 'FULFILLED';
+  const steps = [
+    {label: 'Placed', state: 'done', date: fmtDate(order.processedAt)},
+    {label: 'Confirmed', state: 'done', date: ''},
+    {label: 'In production', state: fulfilled ? 'done' : 'now', date: fulfilled ? '' : 'Now'},
+    {label: 'Fulfilled', state: fulfilled ? 'done' : '', date: ''},
+  ] as const;
 
   return (
-    <div>
+    <>
       <Link
         to="/account/orders"
         prefetch="intent"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-700 hover:underline"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition hover:text-brand-700"
       >
-        ← Back to orders
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+        Back to overview
       </Link>
 
-      <AccountCard
-        icon={<IconBag />}
-        title={`Order ${order.name}`}
-        action={<StatusChip>{fulfillmentStatus}</StatusChip>}
-      >
-        <p className="mb-4 text-sm text-muted">
-          Placed on {new Date(order.processedAt!).toDateString()}
-          {order.confirmationNumber ? ` · ${order.confirmationNumber}` : ''}
-        </p>
-
-        <div className="divide-y divide-black/10">
-          {lineItems.map((lineItem, i) => (
-            // eslint-disable-next-line react/no-array-index-key
-            <OrderLineRow key={i} lineItem={lineItem} />
-          ))}
+      {/* header + tracker */}
+      <div className={cardCls}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-extrabold tracking-tight text-ink">Order {order.name}</h1>
+            <div className="mt-1 text-xs text-muted">
+              Placed {fmtDate(order.processedAt)}
+              {order.confirmationNumber ? ` · ${order.confirmationNumber}` : ''}
+            </div>
+          </div>
+          <a
+            href={order.statusPageUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center rounded-full border border-black/15 px-4 text-sm font-semibold text-ink transition hover:bg-mint"
+          >
+            Track shipment →
+          </a>
         </div>
 
-        <div className="ml-auto mt-4 flex max-w-[300px] flex-col gap-2.5 border-t border-black/10 pt-4 text-[13.5px]">
-          {hasDiscount && (
-            <SummaryRow label="Discounts">
-              {discountPercentage ? (
-                <span>-{discountPercentage}% OFF</span>
-              ) : (
-                discountValue && <Money data={discountValue} />
-              )}
-            </SummaryRow>
-          )}
-          <SummaryRow label="Subtotal">
-            <Money data={order.subtotal!} />
-          </SummaryRow>
-          <SummaryRow label="Tax">
-            <Money data={order.totalTax!} />
-          </SummaryRow>
-          <div className="mt-1 flex items-center justify-between gap-5 border-t border-black/10 pt-3 text-[15px] font-semibold text-ink">
-            <span>Total</span>
-            <span className="tabular-nums">
-              <Money data={order.totalPrice!} />
-            </span>
+        <ol className="mt-8 flex">
+          {steps.map((s, i) => (
+            <li key={s.label} className="relative flex-1 px-1 pt-6 text-center">
+              {i > 0 ? <span className={`absolute left-[calc(-50%+9px)] top-[8px] h-0.5 w-full ${s.state ? 'bg-emerald-500' : 'bg-black/10'}`} /> : null}
+              <span className={`absolute left-[calc(50%-9px)] top-0 grid h-[18px] w-[18px] place-items-center rounded-full ${s.state === 'done' ? 'bg-emerald-500' : s.state === 'now' ? 'bg-brand-500 ring-4 ring-brand-500/25' : 'border-2 border-black/15 bg-white'}`}>
+                {s.state === 'done' ? <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="#fff" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5L20 7" /></svg> : null}
+              </span>
+              <div className={`text-[9px] font-bold uppercase leading-tight tracking-normal sm:text-[11px] sm:tracking-wide ${s.state ? 'text-ink' : ''}`} style={!s.state ? {color: '#94a1b3'} : undefined}>{s.label}</div>
+              <div className="mt-0.5 text-[10px] text-muted">{s.date}</div>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[1.6fr_1fr]">
+        {/* items */}
+        <div className={cardCls}>
+          <h2 className="text-lg font-bold text-ink">Items · {lineItems.length}</h2>
+          <div className="mt-2 divide-y divide-black/[0.06]">
+            {lineItems.map((it) => (
+              <OrderLineRow key={it.id} lineItem={it} />
+            ))}
           </div>
         </div>
-      </AccountCard>
 
-      {order?.shippingAddress ? (
-        <div className="mt-5">
-          <AccountCard icon={<IconPin />} title="Shipping address">
-            <address className="text-[13.5px] not-italic leading-relaxed text-muted">
-              <span className="block font-semibold text-ink">
-                {order.shippingAddress.name}
-              </span>
-              {order.shippingAddress.formatted ? (
-                <span className="block">{order.shippingAddress.formatted}</span>
+        {/* summary + shipping */}
+        <div className="space-y-6">
+          <div className={cardCls}>
+            <h2 className="text-lg font-bold text-ink">Summary</h2>
+            <div className="mt-4 flex flex-col gap-2.5 text-sm">
+              {hasDiscount ? (
+                <Row label="Discount">
+                  {discountPercentage ? <span>-{discountPercentage}%</span> : discountValue ? <Money data={discountValue} /> : null}
+                </Row>
               ) : null}
-              {order.shippingAddress.formattedArea ? (
-                <span className="block">
-                  {order.shippingAddress.formattedArea}
-                </span>
-              ) : null}
-            </address>
-          </AccountCard>
+              <Row label="Subtotal"><Money data={order.subtotal!} /></Row>
+              <Row label="Tax"><Money data={order.totalTax!} /></Row>
+              <div className="mt-1 flex items-center justify-between border-t border-black/[0.08] pt-3 text-[15px] font-bold text-ink">
+                <span>Total</span>
+                <span className="tabular-nums"><Money data={order.totalPrice!} /></span>
+              </div>
+            </div>
+          </div>
+
+          {order?.shippingAddress ? (
+            <div className={cardCls}>
+              <h2 className="text-lg font-bold text-ink">Shipping address</h2>
+              <address className="mt-3 text-sm not-italic leading-relaxed text-ink">
+                <span className="block font-semibold">{order.shippingAddress.name}</span>
+                {order.shippingAddress.formatted ? <span className="block text-muted">{order.shippingAddress.formatted}</span> : null}
+                {order.shippingAddress.formattedArea ? <span className="block text-muted">{order.shippingAddress.formattedArea}</span> : null}
+              </address>
+              <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Fulfillment · <span className="text-ink">{prettyStatus(fulfillmentStatus)}</span>
+              </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-
-      <div className="mt-5">
-        <AccountCard icon={<IconTruck />} title="Delivery">
-          <p className="mb-4 text-sm text-muted">
-            Follow your order status and shipment updates.
-          </p>
-          <a
-            target="_blank"
-            href={order.statusPageUrl}
-            rel="noreferrer"
-            className="btn btn-dark !px-5 !py-2.5 text-sm"
-          >
-            View order status →
-          </a>
-        </AccountCard>
       </div>
-    </div>
+    </>
   );
 }
 
-function SummaryRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function prettyStatus(s: string) {
+  const t = s.replace(/_/g, ' ').toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function Row({label, children}: {label: string; children: React.ReactNode}) {
   return (
     <div className="flex items-center justify-between gap-5 text-muted">
       <span>{label}</span>
@@ -202,27 +202,18 @@ function SummaryRow({
 
 function OrderLineRow({lineItem}: {lineItem: OrderLineItemFullFragment}) {
   return (
-    <div className="flex items-center gap-4 py-3.5">
-      <div className="h-12 w-12 flex-none overflow-hidden rounded-xl border border-black/10 bg-mint">
+    <div className="flex items-start gap-4 py-4 first:pt-2 last:pb-0">
+      <span className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-black/10 bg-mint">
         {lineItem?.image ? (
-          <Image
-            data={lineItem.image}
-            aspectRatio="1/1"
-            sizes="48px"
-            className="h-full w-full object-cover"
-          />
+          <Image data={lineItem.image} aspectRatio="1/1" sizes="64px" className="h-full w-full object-cover" />
         ) : null}
-      </div>
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-ink">{lineItem.title}</p>
-        {lineItem.variantTitle ? (
-          <p className="text-[12.5px] text-muted">{lineItem.variantTitle}</p>
-        ) : null}
+        <div className="text-[15px] font-bold tracking-tight text-ink">{lineItem.title}</div>
+        {lineItem.variantTitle ? <div className="mt-0.5 text-[13px] text-muted">{lineItem.variantTitle}</div> : null}
+        <div className="mt-1 text-[13px] text-muted">Qty {lineItem.quantity}</div>
       </div>
-      <div className="tabular-nums text-[13px] text-muted">
-        Qty {lineItem.quantity}
-      </div>
-      <div className="tabular-nums text-sm font-semibold text-ink">
+      <div className="shrink-0 text-right text-sm font-semibold tabular-nums text-ink">
         <Money data={lineItem.price!} />
       </div>
     </div>

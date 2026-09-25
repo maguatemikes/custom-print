@@ -225,12 +225,25 @@ function UtilityBar({customer}: {customer: HeaderProps['customer']}) {
   );
 }
 
-/** Signed-out utility links → native Customer Account API login. */
+/** Signed-out utility links → native Customer Account API login.
+ *  Shows a pending label the moment it's clicked (real `useNavigation` state),
+ *  since /account/login runs a loader that redirects out to Shopify's hosted
+ *  login — so there'd otherwise be a dead beat before the browser leaves. No
+ *  prefetch here: the login loader immediately redirects, so warming it early
+ *  would kick off the OAuth hop prematurely. */
 function UtilSignedOut() {
+  const navigation = useNavigation();
+  const pending =
+    navigation.state !== 'idle' &&
+    navigation.location?.pathname === '/account/login';
   return (
     <UtilItem>
-      <NavLink to="/account/login" className={utilLinkClass}>
-        Sign In
+      <NavLink
+        to="/account/login"
+        aria-busy={pending}
+        className={utilLinkClass}
+      >
+        {pending ? 'Signing in…' : 'Sign In'}
       </NavLink>
     </UtilItem>
   );
