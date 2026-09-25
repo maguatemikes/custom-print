@@ -6,7 +6,6 @@ import {ProductItem} from '~/components/ProductItem';
 import {FeatureBadges} from '~/components/FeatureBadges';
 import {CurveCarousel} from '~/components/CurveCarousel';
 import SmokeyCursor from '~/components/lightswind/smokey-cursor';
-import {PriceEstimator} from '~/components/PriceEstimator';
 import {siteOrigin} from '~/lib/seo';
 import howItWorksBg from '~/assets/how-it-works-bg.png';
 import {customWizardPath} from '~/lib/customPrintData';
@@ -102,7 +101,6 @@ export default function Homepage() {
         <FeatureBadges />
       </div>
       <HowItWorks />
-      <BulkPricing />
       <PremadeProducts products={data.recommendedProducts} />
       <MadeToOrderProducts products={data.recommendedProducts} />
     </div>
@@ -459,17 +457,6 @@ function HowItWorks() {
         </div>
       </div>
     </section>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Bulk & wholesale pricing — a live calculator on the real tier engine         */
-/* -------------------------------------------------------------------------- */
-function BulkPricing() {
-  return (
-    <Section className="bg-paper">
-      <PriceEstimator />
-    </Section>
   );
 }
 

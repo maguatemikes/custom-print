@@ -1009,7 +1009,10 @@ export default function SmokeyCursor({
     }
 
     function scaleByPixelRatio(input: number) {
-      const pixelRatio = window.devicePixelRatio || 1;
+      // Cap at 1 — the fluid sim doesn't need retina density. Uncapped DPR makes
+      // its textures 4–9× larger on retina screens, which is the bulk of the
+      // homepage's first-load init spike. No-op at DPR 1.
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 1);
       return Math.floor(input * pixelRatio);
     }
 
