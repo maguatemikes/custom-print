@@ -670,4 +670,21 @@ button.reset:hover:not(:has(> *)) {
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+
+/*
+* --------------------------------------------------
+* View transitions — smooth cross-fade between pages
+* (opt-in per navigation via `viewTransition` on the Link)
+* --------------------------------------------------
+*/
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.22s;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
 }

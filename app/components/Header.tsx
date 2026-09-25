@@ -284,6 +284,7 @@ function NavTop({item}: {item: NavItem}) {
         to={item.to}
         end
         prefetch="intent"
+        viewTransition
         className={() =>
           `relative flex items-center px-1 text-[15px] font-medium transition-colors ${
             item.accent ? 'text-brand-600' : 'text-ink'

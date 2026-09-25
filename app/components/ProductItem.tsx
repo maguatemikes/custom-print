@@ -29,7 +29,7 @@ export function ProductItem({
   const to = customPath ?? variantUrl;
 
   return (
-    <Link className="group block" key={product.id} prefetch="intent" to={to}>
+    <Link className="group block" key={product.id} prefetch="intent" viewTransition to={to}>
       <div className="relative aspect-square overflow-hidden rounded-2xl bg-mint">
         {image ? (
           <Image
