@@ -26,6 +26,7 @@ import {
   ACCOUNT_LABEL,
   ACCOUNT_INPUT,
 } from '~/components/AccountUI';
+import {invalidateCached} from '~/lib/accountCache';
 
 export type ActionResponse = {
   addressId?: string | null;
@@ -269,6 +270,14 @@ export async function action({request, context}: Route.ActionArgs) {
       },
     );
   }
+}
+
+// After any address mutation, drop the cached customer so the account layout's
+// next (revalidation) read reflects the change instead of the stale cache.
+export async function clientAction({serverAction}: Route.ClientActionArgs) {
+  const result = await serverAction();
+  invalidateCached('customer');
+  return result;
 }
 
 type Mode = 'list' | 'new' | {edit: string};

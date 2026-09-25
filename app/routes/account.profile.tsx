@@ -16,6 +16,7 @@ import {
   ACCOUNT_LABEL,
   ACCOUNT_INPUT,
 } from '~/components/AccountUI';
+import {invalidateCached} from '~/lib/accountCache';
 
 export type ActionResponse = {
   error: string | null;
@@ -90,6 +91,14 @@ export async function action({request, context}: Route.ActionArgs) {
       },
     );
   }
+}
+
+// After a profile update, drop the cached customer so the account layout's next
+// (revalidation) read fetches the new name instead of the stale cache.
+export async function clientAction({serverAction}: Route.ClientActionArgs) {
+  const result = await serverAction();
+  invalidateCached('customer');
+  return result;
 }
 
 export default function AccountProfile() {

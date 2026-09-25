@@ -30,6 +30,7 @@ import type {
 import type {ActionResponse as ProfileActionResponse} from './account.profile';
 import type {ActionResponse as AddressActionResponse} from './account.addresses';
 import {StatusChip, prettyStatus} from '~/components/AccountUI';
+import {getCached, setCached} from '~/lib/accountCache';
 
 type OrdersLoaderData = {
   customer: CustomerOrdersFragment;
@@ -63,6 +64,20 @@ export async function loader({request, context}: Route.LoaderArgs) {
 
   return {customer: data.customer, filters};
 }
+
+// Client-side stale-cache: on repeat visits within the TTL, paint the last
+// orders result instantly instead of re-hitting the (uncacheable) Customer
+// Account API. In-memory only + cleared on logout — see ~/lib/accountCache.
+export async function clientLoader({serverLoader}: Route.ClientLoaderArgs) {
+  const cached = getCached<OrdersLoaderData>('orders');
+  if (cached) return cached;
+  const data = (await serverLoader()) as OrdersLoaderData;
+  setCached('orders', data);
+  return data;
+}
+// Run on hydration too, so the very first load seeds the cache (serverLoader()
+// returns the already-loaded SSR data here — no extra request).
+clientLoader.hydrate = true as const;
 
 const cardCls =
   'rounded-2xl border border-black/10 bg-white p-5 shadow-[0_8px_24px_-18px_rgba(11,22,34,0.35)] md:p-6';
@@ -480,7 +495,7 @@ function AddressForm({
   const err = fetcher.data?.error?.[id];
   const labelCls = 'mb-1 block text-xs font-semibold text-muted';
   return (
-    <fetcher.Form method={isNew ? 'POST' : 'PUT'} action="/account/addresses" className="mt-4 rounded-xl border border-black/10 bg-white p-4">
+    <fetcher.Form method={isNew ? 'POST' : 'PUT'} action="/account/addresses" className="mt-4 max-w-none rounded-xl border border-black/10 bg-white p-4">
       <input type="hidden" name="addressId" value={id} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
