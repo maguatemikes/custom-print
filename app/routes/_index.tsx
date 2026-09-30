@@ -195,6 +195,12 @@ function Hero() {
             Design your own
           </Link>
         </div>
+        <Link
+          to="/bandana-quiz"
+          className="quiz-glow mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-brand-700"
+        >
+          Not sure where to start? Take the 60-second quiz →
+        </Link>
       </div>
 
       <HeroGallery />

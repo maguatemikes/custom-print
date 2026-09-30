@@ -687,4 +687,53 @@ button.reset:hover:not(:has(> *)) {
     animation: none;
   }
 }
+
+/*
+* --------------------------------------------------
+* Quiz CTA — a beam of light that travels around the border
+* (thin border, one bright segment moving; no glow, no fill)
+* --------------------------------------------------
+*/
+@property --quiz-beam {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@property --quiz-fill {
+  syntax: "<color>";
+  initial-value: #ffffff;
+  inherits: false;
+}
+@keyframes quiz-beam-spin {
+  to {
+    --quiz-beam: 360deg;
+  }
+}
+.quiz-glow {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--quiz-fill), var(--quiz-fill)) padding-box,
+    conic-gradient(
+      from var(--quiz-beam),
+      rgba(30, 115, 190, 0.12),
+      rgba(30, 115, 190, 0.12) 240deg,
+      #22d3ee 288deg,
+      #3b82f6 315deg,
+      #8b5cf6 335deg,
+      #ec4899 348deg,
+      #ffffff 357deg,
+      rgba(30, 115, 190, 0.12) 360deg
+    ) border-box;
+  transition: --quiz-fill 0.2s ease;
+  animation: quiz-beam-spin 3.5s linear infinite;
+}
+/* subtle fill on hover so it reads as a button */
+.quiz-glow:hover {
+  --quiz-fill: #eef6fc;
+}
+@media (prefers-reduced-motion: reduce) {
+  .quiz-glow {
+    animation: none;
+  }
+}
 }
