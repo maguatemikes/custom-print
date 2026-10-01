@@ -19,14 +19,50 @@ export default async function handleRequest(
       checkoutDomain: context.env.PUBLIC_CHECKOUT_DOMAIN,
       storeDomain: context.env.PUBLIC_STORE_DOMAIN,
     },
+    // img-src has no Hydrogen default, so this list IS the whole image policy —
+    // it must re-list every host the storefront already relied on (Shopify CDN,
+    // Unsplash, and the NetX media CDN the wizard/PDP + cart proofs load from)
+    // before adding the GA4 pixel hosts. Dropping any of these would break the
+    // cart's uploaded-logo / design-proof images.
     imgSrc: [
       "'self'",
       'data:',
       'https://cdn.shopify.com',
       'https://images.unsplash.com',
-      // NetX Media CDN (WFE) — where the wizard/PDP host uploaded logos + design
-      // proofs; the cart renders these as <img>, so the origin must be allowed.
       'https://media.wholesaleforeveryone.com',
+      // Google Tag Manager / GA4 — tracking pixels & beacons.
+      'https://www.googletagmanager.com',
+      'https://www.google-analytics.com',
+      'https://*.google-analytics.com',
+      'https://*.g.doubleclick.net',
+    ],
+    // script-src has NO Hydrogen default — scripts normally fall back to
+    // default-src. Introducing a script-src REPLACES that fallback, so this list
+    // must reproduce every script host default-src provided (cdn.shopify.com =
+    // consent-tracking-api + perf-kit, shopify.com = Customer Account API, the
+    // dev localhost host) and only THEN add GTM/GA4. Hydrogen appends the nonce.
+    scriptSrc: [
+      "'self'",
+      'https://cdn.shopify.com',
+      'https://shopify.com',
+      'http://localhost:*',
+      'https://www.googletagmanager.com',
+      'https://www.google-analytics.com',
+    ],
+    // Now that a script-src exists, workers fall back to it instead of
+    // default-src — so allow blob: workers explicitly (Shopify perf-kit / GA
+    // spin these up) rather than loosening script-src to accept blob: scripts.
+    workerSrc: ["'self'", 'blob:'],
+    // connectSrc has a Hydrogen default, so this MERGES with it — the Storefront
+    // API, checkout domain, monorail, and dev HMR websockets are all preserved.
+    // We only add the GA4 collect/beacon hosts; the cart/wizard network calls
+    // keep working untouched.
+    connectSrc: [
+      'https://www.googletagmanager.com',
+      'https://www.google-analytics.com',
+      'https://*.google-analytics.com',
+      'https://*.analytics.google.com',
+      'https://stats.g.doubleclick.net',
     ],
   });
 

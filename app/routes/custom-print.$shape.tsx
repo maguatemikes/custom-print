@@ -47,6 +47,7 @@ import {BandanaStep} from '~/components/custom-print/BandanaStep';
 import {DesignStep} from '~/components/custom-print/DesignStep';
 import {QuantityStep} from '~/components/custom-print/QuantityStep';
 import {QuoteStep} from '~/components/custom-print/QuoteStep';
+import {CustomPrintAnalytics} from '~/components/custom-print/CustomPrintAnalytics';
 import {CustomPrintInfo} from '~/components/custom-print/CustomPrintInfo';
 import {Breadcrumbs, breadcrumbJsonLd} from '~/components/Breadcrumbs';
 
@@ -1088,6 +1089,33 @@ export default function CustomDesign() {
 
   return (
     <>
+    {/* GTM instrumentation — render-null, reads state only, no wizard logic. */}
+    <CustomPrintAnalytics
+      shape={shape}
+      slug={slug}
+      productTitle={productTitle}
+      productHandle={productHandle}
+      variantId={variantId}
+      currencyCode={currencyCode}
+      step={step}
+      size={size}
+      material={material}
+      baseHex={baseHex}
+      printSides={printSides}
+      printLabel={printLabel}
+      patternLabel={patternLabel}
+      intentLabel={intentLabel}
+      qty={qty}
+      unit={unit}
+      total={total}
+      designStatus={designStatus}
+      logoName={logo?.name ?? null}
+      logoType={logo?.type ?? null}
+      logoSize={logo?.size ?? null}
+      logoUrl={logoUrl}
+      isTwoSided={isTwo}
+      backLogoUrl={backLogoUrl}
+    />
     <div className="bg-paper">
       <div className="ui-container py-8 md:py-12">
         <Breadcrumbs

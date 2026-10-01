@@ -9,6 +9,7 @@ import {ColorSpectrum} from '~/components/ColorSpectrum';
 import {SelectMenu} from '~/components/SelectMenu';
 import {downscaleDataUrl, uploadImage, svgToPng} from '~/lib/customPrintProof';
 import {Breadcrumbs, breadcrumbJsonLd} from '~/components/Breadcrumbs';
+import {BandanaQuizAnalytics} from '~/components/BandanaQuizAnalytics';
 import {siteOrigin} from '~/lib/seo';
 import {
   DEFAULT_SIZE,
@@ -941,6 +942,24 @@ export default function BandanaQuizPage() {
 
   return (
     <div className="bg-paper">
+      {/* GTM instrumentation — render-null, reads state only, no quiz logic. */}
+      <BandanaQuizAnalytics
+        step={step}
+        emailStep={9}
+        resultStep={RESULT_STEP}
+        qPos={qPos}
+        qTotal={qTotal}
+        useCase={useCase}
+        useCaseOther={useCaseOther}
+        shape={shape}
+        size={size}
+        qty={qty}
+        print={print}
+        intent={intent}
+        layout={layout}
+        color={color}
+        eventDate={eventDate}
+      />
       <style>{`
         @keyframes qzIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
         @keyframes qzPop{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
