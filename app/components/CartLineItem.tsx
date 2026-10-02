@@ -1,7 +1,7 @@
 import type {CartLineUpdateInput} from '@shopify/hydrogen/storefront-api-types';
 import type {CartLayout, LineItemChildrenMap} from '~/components/CartMain';
 import {CartForm, Image, Money, type OptimisticCartLine} from '@shopify/hydrogen';
-import {useEffect, useState} from 'react';
+import {useSyncExternalStore} from 'react';
 import {useVariantUrl} from '~/lib/variants';
 import {MIN_ORDER_QTY} from '~/lib/cart';
 import {getProofThumb} from '~/lib/proofThumbs';
@@ -10,6 +10,11 @@ import {useAside} from './Aside';
 import type {CartApiQueryFragment} from 'storefrontapi.generated';
 
 export type CartLine = OptimisticCartLine<CartApiQueryFragment>;
+
+// Stable no-op subscribe for useSyncExternalStore — the cached proof thumbnail
+// is written once (at design time, before add-to-cart) and never changes after,
+// so there's nothing to subscribe to; we only need the synchronous snapshot.
+const SUBSCRIBE_NOOP = () => () => {};
 
 /**
  * A single cart line item — image, title, options, quantity stepper, price,
@@ -50,10 +55,22 @@ export function CartLineItem({
   // so the cart shows the design immediately instead of blank-until-the-full-
   // 1200px-proof-downloads. Read after mount (client-only) to avoid a hydration
   // mismatch; falls back to the hosted URL when there's no cached thumb.
-  const [proofThumb, setProofThumbState] = useState<string | null>(null);
-  useEffect(() => {
-    setProofThumbState(getProofThumb(designOutput));
-  }, [designOutput]);
+  // useSyncExternalStore reads the cached thumbnail SYNCHRONOUSLY on the client,
+  // so a client-only mount (the add-to-cart drawer) has the thumb on the very
+  // first paint (no CDN flash); the server snapshot is null, so SSR/hydration on
+  // the /cart page use the hosted URL and never mismatch.
+  const proofThumb = useSyncExternalStore(
+    SUBSCRIBE_NOOP,
+    () => getProofThumb(designOutput),
+    () => null,
+  );
+  // Optimistic add-to-cart lines carry no attributes, so the wizard / product
+  // page ride the design on the merchandise image as a base64 data URL instead.
+  // Render any data: URL through the plain <img> below — Hydrogen's <Image> would
+  // mangle it via its Shopify-CDN transform (showing a broken image). This is
+  // what makes the design show instantly on the optimistic line.
+  const optimisticDesign = image?.url?.startsWith('data:') ? image.url : null;
+  const designSrc = proofThumb ?? designOutput ?? optimisticDesign;
   // A blank (no-print) bandana has no proof image — fall back to its solid base
   // colour so the cart shows the actual product, not an empty tile.
   const baseColour = line.attributes?.find(
@@ -75,11 +92,11 @@ export function CartLineItem({
           onClick={() => layout === 'aside' && close()}
           className="shrink-0"
         >
-          {designOutput ? (
+          {designSrc ? (
             // The design proof (transparent for triangles) — object-contain so
             // the whole shape shows; bg-mint fills any transparent area on-brand.
             <img
-              src={proofThumb ?? designOutput}
+              src={designSrc}
               alt={`${product.title} — your design`}
               height={80}
               width={80}

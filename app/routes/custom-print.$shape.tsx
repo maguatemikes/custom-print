@@ -36,7 +36,7 @@ import {
   TRI_FULL_CENTER,
 } from '~/lib/customPrintData';
 import {svgToPng, uploadImage} from '~/lib/customPrintProof';
-import {setProofThumb} from '~/lib/proofThumbs';
+import {getProofThumb, setProofThumb} from '~/lib/proofThumbs';
 import {
   ProgressBar,
   BlankDesignNotice,
@@ -177,6 +177,11 @@ export async function loader({context, params}: Route.LoaderArgs) {
   try {
     const data = (await storefront.query(CUSTOM_PRODUCT_QUERY, {
       variables: {handle: route.handle},
+      // Cache the product's variants/sizes/prices (stable data) so a cold load
+      // isn't gated on a live Shopify query — without this, every first load
+      // hit the API directly and timed out → "Server Timeout" 500 when the API
+      // was slow. Matches the sibling SHAPE_CARD_QUERY's CacheLong policy.
+      cache: storefront.CacheLong(),
     })) as {
       product?: {
         title?: string;
@@ -1083,8 +1088,46 @@ export default function CustomDesign() {
       }
     : null;
 
+  // Optimistic cart: Hydrogen's optimistic line carries only `merchandise` — it
+  // drops the line attributes — so the drawer shows the blank product
+  // placeholder until the server round-trips. Seed the optimistic merchandise
+  // image with the cached proof thumbnail (instant base64, no network) so the
+  // shopper sees their design the moment they add to cart. Client-only hint:
+  // the server uses merchandiseId + attributes only, so the order is unaffected.
+  const optimisticThumb = getProofThumb(designOutput);
+  // Custom bandanas of the same size+material share ONE variant id — only the
+  // design (attributes) differs. Hydrogen's optimistic cart matches by variant
+  // id, so adding a SECOND design would fold into — and "load" — the existing
+  // line. Give each design a unique optimistic variant id so the new design pops
+  // in as its own line. The server uses the real `merchandiseId`, so the add is
+  // correct; CartLineItem reads product/title/image (not id), so display is fine.
+  const designKey = designOutput ?? `blank-${baseHex}`;
+  const merchandiseForCart = merchandise
+    ? {
+        ...merchandise,
+        id: `${merchandise.id}#${designKey}`,
+        ...(optimisticThumb
+          ? {
+              image: {
+                url: optimisticThumb,
+                altText: merchandise.image?.altText ?? null,
+                width: 160,
+                height: 160,
+              },
+            }
+          : {}),
+      }
+    : merchandise;
+
   const lines = variantId
-    ? [{merchandiseId: variantId, quantity: qty, selectedVariant: merchandise, attributes}]
+    ? [
+        {
+          merchandiseId: variantId,
+          quantity: qty,
+          selectedVariant: merchandiseForCart,
+          attributes,
+        },
+      ]
     : [];
 
   return (

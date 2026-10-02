@@ -33,7 +33,8 @@ import {ProductItem} from '~/components/ProductItem';
 import {ProductInfo} from '~/components/ProductInfo';
 import {redirectIfHandleIsLocalized} from '~/lib/redirect';
 import {customWizardPath} from '~/lib/customPrintData';
-import {uploadImage} from '~/lib/customPrintProof';
+import {uploadImage, downscaleDataUrl} from '~/lib/customPrintProof';
+import {setProofThumb} from '~/lib/proofThumbs';
 import {siteOrigin} from '~/lib/seo';
 import {Breadcrumbs, breadcrumbJsonLd} from '~/components/Breadcrumbs';
 import {fetchProductRatingSummary} from '~/lib/judgeme.server';
@@ -768,6 +769,10 @@ function PersonalizeSection({
   // Cache the last generated proof so re-adding an unchanged placement reuses it.
   const proofSigRef = useRef<string | null>(null);
   const proofUrlRef = useRef<string | null>(null);
+  // A tiny base64 thumbnail of the composite proof, kept so the cart drawer can
+  // paint the design INSTANTLY on add-to-cart (optimistic line + real line),
+  // instead of showing the product placeholder while the full proof downloads.
+  const proofThumbRef = useRef<string | null>(null);
   const placementSig = () =>
     JSON.stringify({
       n: logo?.name,
@@ -858,6 +863,18 @@ function PersonalizeSection({
       : null;
     proofSigRef.current = sig;
     proofUrlRef.current = out;
+    // Cache a tiny thumbnail of the composite (keyed by the hosted URL) so the
+    // cart paints it instantly: getProofThumb(out) feeds the real line, and
+    // proofThumbRef feeds the optimistic line below. Best-effort — never block.
+    if (out && proof) {
+      try {
+        const thumb = await downscaleDataUrl(proof, 160, 'image/jpeg', 0.8);
+        setProofThumb(out, thumb);
+        proofThumbRef.current = thumb;
+      } catch {
+        /* thumbnail is a nicety — never block add-to-cart on it */
+      }
+    }
     setDesignStatus(out ? 'ready' : 'error');
   };
 
@@ -865,6 +882,25 @@ function PersonalizeSection({
   const handleAdd = () => {
     if (!selectedVariant || !ready || !designReady || adding) return;
     const out = logo?.preview ? proofUrlRef.current : null;
+    // Optimistic cart: Hydrogen's optimistic line carries only `merchandise`
+    // (it drops line attributes), so the drawer would show the product's blank
+    // "your design here" placeholder until the server round-trips. Seed the
+    // optimistic merchandise image with the cached proof thumbnail (a tiny
+    // base64 data URL — instant, no network) so the shopper sees their design
+    // the moment they add to cart. Client-only hint: the server uses
+    // merchandiseId + attributes only, so the order is unaffected.
+    // Unique optimistic variant id per design so a SECOND design pops in as its
+    // own line instead of merging into / "loading" the existing one (Hydrogen's
+    // optimistic cart matches by variant id, shared across designs). The server
+    // uses the real `merchandiseId`, so the add is unaffected.
+    const designKey = out ?? `nologo-${color}`;
+    const optimisticVariant = {
+      ...selectedVariant,
+      id: `${selectedVariant.id}#${designKey}`,
+      ...(proofThumbRef.current && logo?.preview
+        ? {image: {...selectedVariant.image, url: proofThumbRef.current}}
+        : {}),
+    };
     void fetcher.submit(
       {
         [CartForm.INPUT_NAME]: JSON.stringify({
@@ -874,7 +910,7 @@ function PersonalizeSection({
               {
                 merchandiseId: selectedVariant.id,
                 quantity,
-                selectedVariant,
+                selectedVariant: optimisticVariant,
                 attributes: makeAttributes(out),
               },
             ],
