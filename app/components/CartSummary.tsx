@@ -3,6 +3,7 @@ import type {CartLayout} from '~/components/CartMain';
 import {CartForm, Money, type OptimisticCart} from '@shopify/hydrogen';
 import {Link} from 'react-router';
 import {useAside} from '~/components/Aside';
+import {pushDataLayer} from '~/lib/dataLayer';
 
 type CartSummaryProps = {
   cart: OptimisticCart<CartApiQueryFragment | null>;
@@ -73,7 +74,11 @@ export function CartSummary({cart, layout}: CartSummaryProps) {
 
       {/* Actions */}
       <div className="space-y-2">
-        <CartCheckoutButton checkoutUrl={cart?.checkoutUrl} />
+        <CartCheckoutButton
+          checkoutUrl={cart?.checkoutUrl}
+          value={subtotalNum}
+          currencyCode={currencyCode}
+        />
         {layout === 'aside' ? (
           <button
             type="button"
@@ -102,10 +107,27 @@ export function CartSummary({cart, layout}: CartSummaryProps) {
   );
 }
 
-function CartCheckoutButton({checkoutUrl}: {checkoutUrl?: string}) {
+function CartCheckoutButton({
+  checkoutUrl,
+  value,
+  currencyCode,
+}: {
+  checkoutUrl?: string;
+  value: number;
+  currencyCode: string;
+}) {
   if (!checkoutUrl) return null;
   return (
-    <a href={checkoutUrl} target="_self" className="btn btn-dark w-full">
+    <a
+      href={checkoutUrl}
+      target="_self"
+      className="btn btn-dark w-full"
+      // Fire begin_checkout before the browser leaves for Shopify's checkout.
+      // Runs synchronously on click; GA4's sendBeacon survives the page unload.
+      onClick={() =>
+        pushDataLayer('begin_checkout', {value, currency: currencyCode})
+      }
+    >
       Proceed to Checkout →
     </a>
   );
