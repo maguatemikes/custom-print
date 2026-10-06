@@ -35,6 +35,8 @@ export default async function handleRequest(
       'https://www.google-analytics.com',
       'https://*.google-analytics.com',
       'https://*.g.doubleclick.net',
+      // Meta (Facebook) Pixel — the <img> tracking beacon (facebook.com/tr).
+      'https://www.facebook.com',
     ],
     // script-src has NO Hydrogen default — scripts normally fall back to
     // default-src. Introducing a script-src REPLACES that fallback, so this list
@@ -48,6 +50,8 @@ export default async function handleRequest(
       'http://localhost:*',
       'https://www.googletagmanager.com',
       'https://www.google-analytics.com',
+      // Meta (Facebook) Pixel — fbevents.js loads from connect.facebook.net.
+      'https://connect.facebook.net',
     ],
     // Now that a script-src exists, workers fall back to it instead of
     // default-src — so allow blob: workers explicitly (Shopify perf-kit / GA
@@ -63,6 +67,9 @@ export default async function handleRequest(
       'https://*.google-analytics.com',
       'https://*.analytics.google.com',
       'https://stats.g.doubleclick.net',
+      // Meta (Facebook) Pixel — event beacons / config fetches.
+      'https://www.facebook.com',
+      'https://connect.facebook.net',
     ],
   });
 
