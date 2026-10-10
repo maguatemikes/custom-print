@@ -382,6 +382,11 @@ export async function action({request}: Route.ActionArgs) {
     )} pcs · ${unitStr}/pc · Estimated total ${totalStr}`,
   };
 
+  // Meta CAPI Lead is handled by the unified GTM pipeline — the quiz's
+  // `generate_lead` dataLayer push → GTM → tracking.wholesaleforeveryone.com
+  // (server container) → CAPI → the unified pixel. No server-side CAPI is sent
+  // from here, so Lead is counted once, on the unified pixel.
+
   // FunnelKit (Autonami) incoming webhook. Inline for now — server-only, so the
   // key never ships to the browser. TODO: move to an env secret
   // (FUNNELKIT_WEBHOOK_URL) once hosting/secrets are set up.
@@ -877,6 +882,28 @@ export default function BandanaQuizPage() {
       setPhoneError('');
     }
     if (invalid) return;
+
+    // Additive only — push the lead to GTM's dataLayer for the Meta Lead.
+    // custombandanas is Meta-only (no GA4), so the email/phone here are fine;
+    // tracking.wholesaleforeveryone.com (server container) sends the CAPI Lead.
+    // Reads state, wrapped so it can NEVER throw — cannot affect the quiz below.
+    try {
+      const leadName = name.trim().split(/\s+/);
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({
+        event: 'generate_lead',
+        lead_type: 'custom_print',
+        user_data: {
+          email: email.trim(),
+          billing_phone: phone.trim(),
+          first_name: leadName[0] || '',
+          last_name: leadName.slice(1).join(' '),
+        },
+      });
+    } catch {
+      /* never block the quiz */
+    }
+
     // Fire the quote to FunnelKit via our server action (POST to this route's
     // action, which forwards to the webhook). Best-effort and non-blocking — the
     // shopper always advances to the result even if the send fails.
