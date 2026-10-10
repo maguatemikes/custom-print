@@ -70,6 +70,10 @@ export default async function handleRequest(
       // Meta (Facebook) Pixel — event beacons / config fetches.
       'https://www.facebook.com',
       'https://connect.facebook.net',
+      // Stape GTM server container — the Data Tag POSTs server-side CAPI events
+      // here (tracking.wholesaleforeveryone.com/data). Without this, the browser
+      // blocks the fetch and no server-side Meta events are sent.
+      'https://tracking.wholesaleforeveryone.com',
     ],
   });
 
