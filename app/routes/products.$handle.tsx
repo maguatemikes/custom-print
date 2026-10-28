@@ -32,7 +32,13 @@ import {useAside} from '~/components/Aside';
 import {ProductItem} from '~/components/ProductItem';
 import {ProductInfo} from '~/components/ProductInfo';
 import {redirectIfHandleIsLocalized} from '~/lib/redirect';
-import {customWizardPath} from '~/lib/customPrintData';
+import {
+  customWizardPath,
+  sizesFor,
+  normalizeSize,
+  unitPriceFor,
+} from '~/lib/customPrintData';
+import {TierTable} from '~/components/custom-print/TierTable';
 import {uploadImage, downscaleDataUrl} from '~/lib/customPrintProof';
 import {setProofThumb} from '~/lib/proofThumbs';
 import {siteOrigin} from '~/lib/seo';
@@ -271,20 +277,56 @@ export default function Product() {
   const [logoScale, setLogoScale] = useState(40);
   const [logoRotate, setLogoRotate] = useState(0);
 
-  const unitPrice = selectedVariant?.price;
-  const unitCompareAt = selectedVariant?.compareAtPrice;
+  const baseUnit = selectedVariant?.price;
+  const baseCompareAt = selectedVariant?.compareAtPrice;
+
+  // Volume/tier pricing — mirror the cart's Shopify Function on the PDP so the
+  // displayed price reflects the per-quantity discount, not the flat base.
+  // Only for discount-eligible bandanas (Ready-Made / Bandana) at a tier size;
+  // everything else keeps the plain variant price.
+  const sizeOption =
+    selectedVariant?.selectedOptions?.find((o) => /size/i.test(o.name))
+      ?.value ?? '';
+  const sizeNums = sizeOption.match(/\d+/g);
+  const tierSize =
+    sizeNums && sizeNums.length >= 2 ? `${sizeNums[0]} x ${sizeNums[1]}` : '';
+  const tierEligible =
+    ['Ready-Made Bandana', 'Bandana'].includes(product.productType ?? '') &&
+    Boolean(tierSize) &&
+    new Set(sizesFor('Square').map((s) => normalizeSize(s.name))).has(
+      normalizeSize(tierSize),
+    );
+  const tierUnitAmount =
+    tierEligible && baseUnit ? unitPriceFor(quantity, tierSize, 'Square') : null;
+
+  const unitPrice: MoneyV2 | undefined =
+    tierUnitAmount != null && baseUnit
+      ? {amount: tierUnitAmount.toFixed(2), currencyCode: baseUnit.currencyCode}
+      : baseUnit;
   const lineTotal: MoneyV2 | undefined = unitPrice
     ? {
         amount: (Number(unitPrice.amount) * quantity).toFixed(2),
         currencyCode: unitPrice.currencyCode,
       }
     : undefined;
-  const compareTotal: MoneyV2 | null = unitCompareAt
-    ? {
-        amount: (Number(unitCompareAt.amount) * quantity).toFixed(2),
-        currencyCode: unitCompareAt.currencyCode,
-      }
-    : null;
+  // When the tier price is a real discount, strike through the base × qty;
+  // otherwise fall back to the variant's own compare-at.
+  const isTierDiscounted =
+    tierUnitAmount != null &&
+    baseUnit != null &&
+    tierUnitAmount < Number(baseUnit.amount);
+  const compareTotal: MoneyV2 | null =
+    isTierDiscounted && baseUnit
+      ? {
+          amount: (Number(baseUnit.amount) * quantity).toFixed(2),
+          currencyCode: baseUnit.currencyCode,
+        }
+      : baseCompareAt
+        ? {
+            amount: (Number(baseCompareAt.amount) * quantity).toFixed(2),
+            currencyCode: baseCompareAt.currencyCode,
+          }
+        : null;
 
   // Build the gallery in a STABLE order (product images as-is) so switching
   // variants doesn't reshuffle the thumbnails. The selected variant's image stays
@@ -371,6 +413,18 @@ export default function Product() {
             </div>
 
             <MadeToOrderBadge />
+
+            {mode === 'stock' && tierEligible ? (
+              <div className="mt-5">
+                <TierTable
+                  qty={quantity}
+                  setQty={setQuantity}
+                  currencyCode={baseUnit?.currencyCode ?? 'USD'}
+                  shape="Square"
+                  size={tierSize}
+                />
+              </div>
+            ) : null}
 
             <div className="mt-8">
               {mode === 'stock' ? (
@@ -758,6 +812,20 @@ function PersonalizeSection({
   const size = customSize
     ? `Custom ${w || '?'} × ${h || '?'} in`
     : SIZE_PRESETS.find((s) => s.name === sizePreset)?.dims ?? sizePreset;
+
+  // "Buy more, save more" — reuse the wizard's per-size tier sheet for the
+  // personalized (made-to-order) order. Ready-made bandanas are square; only a
+  // size with a real tier sheet shows the table (XL/custom fall outside it,
+  // where tiersFor would just echo the 22×22 anchor — so we hide it instead).
+  const currencyCode = selectedVariant?.price?.currencyCode ?? 'USD';
+  const tierNums = size.match(/\d+/g);
+  const tierSize =
+    tierNums && tierNums.length >= 2 ? `${tierNums[0]} x ${tierNums[1]}` : '';
+  const knownSquare = new Set(
+    sizesFor('Square').map((s) => normalizeSize(s.name)),
+  );
+  const showTiers =
+    Boolean(tierSize) && knownSquare.has(normalizeSize(tierSize));
 
   const uploading = logoStatus === 'uploading';
   const fetcher = useFetcher();
@@ -1245,6 +1313,17 @@ function PersonalizeSection({
 
       {/* Step 5 — quantity (mirrors the stock stepper so custom mode is complete) */}
       <PersonalizeStep n={5} title="Quantity">
+        {showTiers ? (
+          <div className="mb-3">
+            <TierTable
+              qty={quantity}
+              setQty={(v) => setQuantity(() => v)}
+              currencyCode={currencyCode}
+              shape="Square"
+              size={tierSize}
+            />
+          </div>
+        ) : null}
         <div className="inline-flex h-11 items-center rounded-full border border-black/15">
           <button
             type="button"
@@ -1482,6 +1561,7 @@ const PRODUCT_FRAGMENT = `#graphql
     id
     title
     vendor
+    productType
     createdAt
     handle
     descriptionHtml
