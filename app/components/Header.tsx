@@ -1,10 +1,12 @@
-import {Suspense, useEffect, useState} from 'react';
+import {Suspense, useEffect, useRef, useState} from 'react';
 import {
   Await,
   Form,
   NavLink,
   Link,
   useAsyncValue,
+  useFetcher,
+  useNavigate,
   useNavigation,
 } from 'react-router';
 import {
@@ -15,6 +17,11 @@ import {
 import type {HeaderQuery, CartApiQueryFragment} from 'storefrontapi.generated';
 import {useAside} from '~/components/Aside';
 import {SHAPE_ROUTES} from '~/lib/customPrintData';
+import {PredictiveResults} from '~/components/PredictiveResults';
+import {
+  getEmptyPredictiveSearchResult,
+  type PredictiveSearchReturn,
+} from '~/lib/search';
 
 type HeaderCustomer = {firstName?: string | null; lastName?: string | null};
 
@@ -442,22 +449,107 @@ const mobileLinkClass =
 /* Right-side controls                                                         */
 /* -------------------------------------------------------------------------- */
 function SearchPill() {
+  const navigate = useNavigate();
+  const fetcher = useFetcher<PredictiveSearchReturn>({key: 'predictive-header'});
+  const [term, setTerm] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const items =
+    fetcher.data?.result?.items ?? getEmptyPredictiveSearchResult().items;
+  const total = fetcher.data?.result?.total ?? 0;
+  const loading = fetcher.state !== 'idle';
+
+  const runPredictive = (value: string) =>
+    fetcher.submit(
+      {q: value, limit: 6, predictive: true},
+      {method: 'GET', action: '/search'},
+    );
+
+  const goToResults = (q: string) => {
+    const query = q.trim();
+    setOpen(false);
+    inputRef.current?.blur();
+    if (query) navigate('/search?q=' + encodeURIComponent(query));
+  };
+
+  // Close the flyout on an outside click or Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        inputRef.current?.blur();
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const showFlyout = open && term.trim().length > 0;
+
   return (
-    <form
-      action="/search"
-      method="get"
-      role="search"
-      className="hidden h-10 items-center gap-2 rounded-full bg-[#f5f5f5] px-4 focus-within:ring-2 focus-within:ring-brand-400 lg:flex"
-    >
-      <SearchIcon className="h-4 w-4 shrink-0 text-muted" />
-      <input
-        type="search"
-        name="q"
-        placeholder="Search"
-        aria-label="Search"
-        className="w-28 !m-0 !border-0 !bg-transparent !p-0 !text-sm !leading-none text-ink placeholder:text-muted focus:!outline-none xl:w-40"
-      />
-    </form>
+    <div ref={wrapRef} className="relative hidden lg:block">
+      <form
+        action="/search"
+        method="get"
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          goToResults(term);
+        }}
+        className="flex h-10 w-80 items-center gap-2 rounded-2xl bg-[#f5f5f5] px-4 focus-within:ring-2 focus-within:ring-brand-400 xl:w-[26rem]"
+      >
+        <SearchIcon className="h-4 w-4 shrink-0 text-muted" />
+        <input
+          ref={inputRef}
+          type="search"
+          name="q"
+          value={term}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Search bandanas, designs…"
+          aria-label="Search"
+          onChange={(e) => {
+            const v = e.target.value;
+            setTerm(v);
+            if (v.trim()) {
+              setOpen(true);
+              runPredictive(v);
+            } else {
+              setOpen(false);
+            }
+          }}
+          onFocus={() => {
+            if (term.trim()) setOpen(true);
+          }}
+          className="w-full !m-0 !border-0 !bg-transparent !p-0 !text-sm !leading-none text-ink placeholder:text-muted focus:!outline-none"
+        />
+      </form>
+
+      {showFlyout ? (
+        <div className="absolute inset-x-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-black/10 bg-paper shadow-xl">
+          <PredictiveResults
+            items={items}
+            total={total}
+            term={term}
+            loading={loading}
+            onClose={() => setOpen(false)}
+            onSelectQuery={goToResults}
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
