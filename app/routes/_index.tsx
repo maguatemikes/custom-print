@@ -5,7 +5,6 @@ import type {RecommendedProductsQuery} from 'storefrontapi.generated';
 import {ProductItem} from '~/components/ProductItem';
 import {FeatureBadges} from '~/components/FeatureBadges';
 import {CurveCarousel} from '~/components/CurveCarousel';
-import SmokeyCursor from '~/components/lightswind/smokey-cursor';
 import {siteOrigin} from '~/lib/seo';
 import howItWorksBg from '~/assets/how-it-works-bg.png';
 import {customWizardPath} from '~/lib/customPrintData';
@@ -96,7 +95,6 @@ export default function Homepage() {
   return (
     <div className="bg-paper">
       <div className="relative overflow-hidden">
-        <SmokeyCursor />
         <Hero />
         <FeatureBadges />
       </div>
