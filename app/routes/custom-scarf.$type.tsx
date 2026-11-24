@@ -3,6 +3,7 @@ import {
   Link,
   useLoaderData,
   useNavigate,
+  useParams,
   useSearchParams,
   redirect,
   type ShouldRevalidateFunction,
@@ -41,13 +42,13 @@ import {Breadcrumbs} from '~/components/Breadcrumbs';
 /* SEO + loader                                                               */
 /* -------------------------------------------------------------------------- */
 
-export const shouldRevalidate: ShouldRevalidateFunction = ({
-  currentParams,
-  nextParams,
-}) => currentParams.type !== nextParams.type;
+// The scarf product is the SAME for every type, so switching type never needs a
+// loader round-trip — never revalidate. Type is read from the live URL param in
+// the component, so the selection flips instantly on click.
+export const shouldRevalidate: ShouldRevalidateFunction = () => false;
 
 export const meta: Route.MetaFunction = ({matches, data, params}) => {
-  const slug = (data?.initialSlug ?? params?.type ?? 'square').toLowerCase();
+  const slug = (params?.type ?? data?.initialSlug ?? 'square').toLowerCase();
   const title = `Design a custom scarf — Custom Bandanas`;
   const description = `Order made-to-order scarves: pick the type (square, oblong, or shawl), size, edge finish, material, and colour — with bulk pricing. Artwork is set up after checkout.`;
   const origin = siteOrigin(matches);
@@ -143,7 +144,11 @@ export default function CustomScarf() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const typeSlug = initialSlug; // path-driven
+  // Type comes from the LIVE path param so clicking a type flips the UI instantly
+  // (no loader round-trip). initialSlug is only the SSR/first-paint fallback.
+  const params = useParams();
+  const rawType = (params.type ?? initialSlug ?? 'square').toLowerCase();
+  const typeSlug = SCARF_TYPES[rawType] ? rawType : 'square';
   const typeDef = SCARF_TYPES[typeSlug] ?? SCARF_TYPES.square;
 
   // Merge-patch the query string (replace = no history spam; keep scroll).
@@ -319,6 +324,12 @@ export default function CustomScarf() {
             <h1 className="mt-1 text-3xl font-extrabold uppercase leading-tight tracking-tight md:text-4xl">
               {typeLabel}
             </h1>
+            {/* Live SKU for the current configuration (carried on the order). */}
+            <div className="mt-2">
+              <span className="inline-block rounded-md bg-black/[0.06] px-2 py-0.5 font-mono text-xs text-ink">
+                SKU {sku}
+              </span>
+            </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span className="text-2xl font-extrabold leading-none text-ink">
