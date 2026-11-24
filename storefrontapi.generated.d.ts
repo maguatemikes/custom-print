@@ -845,6 +845,32 @@ export type CustomBandanaQuery = {
   >;
 };
 
+export type ScarfProductQueryVariables = StorefrontAPI.Exact<{
+  handle: StorefrontAPI.Scalars['String']['input'];
+  country?: StorefrontAPI.InputMaybe<StorefrontAPI.CountryCode>;
+  language?: StorefrontAPI.InputMaybe<StorefrontAPI.LanguageCode>;
+}>;
+
+export type ScarfProductQuery = {
+  product?: StorefrontAPI.Maybe<
+    Pick<StorefrontAPI.Product, 'id' | 'title' | 'handle'> & {
+      variants: {
+        nodes: Array<
+          Pick<StorefrontAPI.ProductVariant, 'id' | 'title'> & {
+            price: Pick<StorefrontAPI.MoneyV2, 'amount' | 'currencyCode'>;
+            image?: StorefrontAPI.Maybe<
+              Pick<StorefrontAPI.Image, 'url' | 'altText' | 'width' | 'height'>
+            >;
+            selectedOptions: Array<
+              Pick<StorefrontAPI.SelectedOption, 'name' | 'value'>
+            >;
+          }
+        >;
+      };
+    }
+  >;
+};
+
 export type PageQueryVariables = StorefrontAPI.Exact<{
   language?: StorefrontAPI.InputMaybe<StorefrontAPI.LanguageCode>;
   country?: StorefrontAPI.InputMaybe<StorefrontAPI.CountryCode>;
@@ -1563,6 +1589,10 @@ interface GeneratedQueryTypes {
   '#graphql\n  query CustomBandana(\n    $handle: String!\n    $country: CountryCode\n    $language: LanguageCode\n  ) @inContext(country: $country, language: $language) {\n    product(handle: $handle) {\n      id\n      title\n      handle\n      variants(first: 100) {\n        nodes {\n          id\n          title\n          price {\n            amount\n            currencyCode\n          }\n          image {\n            url\n            altText\n            width\n            height\n          }\n          selectedOptions {\n            name\n            value\n          }\n        }\n      }\n    }\n  }\n': {
     return: CustomBandanaQuery;
     variables: CustomBandanaQueryVariables;
+  };
+  '#graphql\n  query ScarfProduct(\n    $handle: String!\n    $country: CountryCode\n    $language: LanguageCode\n  ) @inContext(country: $country, language: $language) {\n    product(handle: $handle) {\n      id\n      title\n      handle\n      variants(first: 100) {\n        nodes {\n          id\n          title\n          price {\n            amount\n            currencyCode\n          }\n          image {\n            url\n            altText\n            width\n            height\n          }\n          selectedOptions {\n            name\n            value\n          }\n        }\n      }\n    }\n  }\n': {
+    return: ScarfProductQuery;
+    variables: ScarfProductQueryVariables;
   };
   '#graphql\n  query Page(\n    $language: LanguageCode,\n    $country: CountryCode,\n    $handle: String!\n  )\n  @inContext(language: $language, country: $country) {\n    page(handle: $handle) {\n      handle\n      id\n      title\n      body\n      seo {\n        description\n        title\n      }\n    }\n  }\n': {
     return: PageQuery;

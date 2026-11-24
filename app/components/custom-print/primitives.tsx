@@ -1,12 +1,21 @@
 import type React from 'react';
-import {STEPS} from '~/lib/customPrintData';
+import {STEPS as BANDANA_STEPS} from '~/lib/customPrintData';
 
 /* -------------------------------------------------------------------------- */
 /* Small shared presentational primitives for the custom-print wizard.        */
 /* Each is <30 lines and stateless — grouped here to keep imports tidy.       */
 /* -------------------------------------------------------------------------- */
 
-export function ProgressBar({step}: {step: number}) {
+export function ProgressBar({
+  step,
+  steps = BANDANA_STEPS,
+}: {
+  step: number;
+  /** Step labels. Defaults to the bandana wizard's STEPS so existing callers
+   * render identically; the cut wizard passes its own labels. */
+  steps?: readonly string[];
+}) {
+  const STEPS = steps;
   // Endowed-progress head start: the fill reaches the NEXT circle, so step 1
   // already looks underway (stops on circle 2) — a nudge to finish.
   const reached = Math.min(step + 1, STEPS.length - 1);

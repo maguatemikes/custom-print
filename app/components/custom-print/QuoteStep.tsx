@@ -21,6 +21,7 @@ export function QuoteStep({
   preview,
   twoUp = false,
   specs,
+  noun = 'Bandana',
 }: {
   shape: string;
   size: string;
@@ -45,6 +46,9 @@ export function QuoteStep({
   preview: React.ReactNode;
   twoUp?: boolean;
   specs: Array<{label: string; value: string; color?: string}>;
+  /** Product noun in the summary + setup notice. Defaults to the bandana wizard's
+   * "Bandana"; the cut wizard passes "piece" (or the shape label). */
+  noun?: string;
 }) {
   return (
     <div>
@@ -63,7 +67,7 @@ export function QuoteStep({
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-sm font-bold text-ink">{shape} Bandana</p>
+            <p className="text-sm font-bold text-ink">{shape} {noun}</p>
             <p className="mt-0.5 text-xs uppercase tracking-wide text-muted">
               {size} · {material} · {qty} pcs
             </p>
@@ -188,7 +192,7 @@ export function QuoteStep({
         ) : (
           <div className="rounded-xl border border-dashed border-black/20 bg-mint p-4 text-center text-sm text-muted">
             The{' '}
-            <span className="font-semibold">Custom {shape} Bandana</span>{' '}
+            <span className="font-semibold">Custom {shape} {noun}</span>{' '}
             product isn&apos;t set up in Shopify yet. Publish it to the Headless
             channel (inventory off) to enable checkout.
           </div>
