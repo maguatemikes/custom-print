@@ -22,5 +22,10 @@ declare global {
     // grant → /admin/oauth/access_token), so it never manually expires. Secret.
     SHOPIFY_CLIENT_ID?: string;
     SHOPIFY_CLIENT_SECRET?: string;
+    // FunnelKit (Autonami) incoming-webhook URL for the bandana-quiz lead send —
+    // includes its webhook id + key, so the whole URL is a secret. Set as a
+    // Cloudflare secret in production, and in .env for local dev. Never hardcode
+    // it (a committed key lands in git history).
+    FUNNELKIT_WEBHOOK_URL?: string;
   }
 }

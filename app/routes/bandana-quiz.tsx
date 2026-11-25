@@ -213,7 +213,7 @@ export const meta: Route.MetaFunction = ({matches}) => {
  * Runs on the Worker so the webhook URL/key never reaches the browser. Best-effort:
  * a failure never blocks the shopper (the client fires it and moves on regardless).
  */
-export async function action({request}: Route.ActionArgs) {
+export async function action({request, context}: Route.ActionArgs) {
   const form = await request.formData();
   const g = (k: string) => String(form.get(k) ?? '').trim();
 
@@ -387,11 +387,13 @@ export async function action({request}: Route.ActionArgs) {
   // (server container) → CAPI → the unified pixel. No server-side CAPI is sent
   // from here, so Lead is counted once, on the unified pixel.
 
-  // FunnelKit (Autonami) incoming webhook. Inline for now — server-only, so the
-  // key never ships to the browser. TODO: move to an env secret
-  // (FUNNELKIT_WEBHOOK_URL) once hosting/secrets are set up.
-  const WEBHOOK_URL =
-    'https://wholesaleforeveryone.com/wp-json/autonami/v1/webhook/?bwfan_autonami_webhook_id=26&bwfan_autonami_webhook_key=q0gm85X2JhhnsubSCLBHd09ZQUj2JsrA';
+  // FunnelKit (Autonami) incoming webhook — server-only. The URL carries its
+  // webhook id + key, so the whole thing is a secret: read it from the Cloudflare
+  // secret FUNNELKIT_WEBHOOK_URL in production (set in .env for local dev). Never
+  // hardcode it — a committed key lands in git history. If it's unset, skip the
+  // send rather than throw, so the shopper still gets their result.
+  const WEBHOOK_URL = context.env.FUNNELKIT_WEBHOOK_URL;
+  if (!WEBHOOK_URL) return Response.json({ok: false});
 
   // The host's bot protection intermittently 403s server calls; a normal browser
   // User-Agent gets through, and we retry once on a challenge so a lead is never
